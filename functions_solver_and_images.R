@@ -829,7 +829,10 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
                    margins = c(3.2, 3.25, 1.05, 0.9),
                    axis_mgp = c(2.2, 0.7, 0),
                    tcl = -0.25,
-                   show_axis_titles = TRUE,
+                   show_x_axis_title = FALSE,
+                   show_y_axis_title = TRUE,
+                   x_axis_title = expression(x),
+                   y_axis_title = expression(H(x) == V*minute*(x)),
                    show_tick_labels = TRUE,
                    tick_cex = 1.7,
                    base_cex = 1, mex = 1) {
@@ -860,8 +863,8 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
         cex.axis = tick_cex)
     
     curve(sol$H(x), from=x_from, to=x_to, n=n,
-          xlab="",
-          ylab=if (show_axis_titles) expression(H(x) == V*minute*(x)) else "",
+          xlab=if (show_x_axis_title) x_axis_title else "",
+          ylab=if (show_y_axis_title) y_axis_title else "",
           col="black", lwd=1.4, ylim=ylim_y,
           xaxt="n", yaxt="n", bty="n")
     
@@ -879,7 +882,7 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
     tw <- c(0.36 * inch_to_user, rep(col_w, 5), 0.38 * inch_to_user)
     
     legend("topleft",
-           legend=expression(H(x), underline(x), x^kappa, x^lambda, bar(x), -u, l),
+           legend=expression(H(x), underline(x), x^kappa, x^lambda, bar(x), -c[U], c[D]),
            lty=c(1,1,2,2,1,3,4),
            col=c("black", cols, "#777777", "#777777"),
            lwd=c(1.4, rep(2,6)),
@@ -895,7 +898,11 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
 
 plot_H_prime <- function(sol, params, show=interactive(), save=TRUE, n = 800,
                          pad_x_frac = 0.10, top_blank = 0.10, bottom_blank = 0.05,
-                         out_base="Hprime_thresholds", dir="figures") {
+                         out_base="Hprime_thresholds", dir="figures",
+                         show_x_axis_title = FALSE,
+                         show_y_axis_title = TRUE,
+                         x_axis_title = expression(x),
+                         y_axis_title = expression(H*minute*(x) == W(x))) {
   stopifnot(!is.null(sol$Hp))
   
   xs   <- unlist(sol$x)[c("xL","xk","xl","xU")]
@@ -935,7 +942,8 @@ plot_H_prime <- function(sol, params, show=interactive(), save=TRUE, n = 800,
     op <- par(xaxs="i"); on.exit(par(op), add=TRUE)
     
     plot(xg, yg, type="l",
-         xlab="", ylab=expression(H*minute*(x) == W(x)),
+         xlab=if (show_x_axis_title) x_axis_title else "",
+         ylab=if (show_y_axis_title) y_axis_title else "",
          col="black", lwd=1.4, ylim=ylim_y)
     
     # thresholds as vertical segments spanning the panel
@@ -1034,13 +1042,21 @@ simulate_reflected_jd <- function(T=8, dt=0.001, x0=NULL, params, thresholds,
 # --------------------------- Original single plots (kept, just call helper) ----
 plot_reflected_jd <- function(sol, params, sim=NULL, seed=123, show=interactive(), 
                               save=TRUE, out_base="reflected_jd", dir="figures",
-                              top_blank=0.075, bottom_blank=0.05) {
+                              top_blank=0.075, bottom_blank=0.05,
+                              show_x_axis_title = TRUE,
+                              show_y_axis_title = FALSE,
+                              x_axis_title = "time",
+                              y_axis_title = expression(bar(X)[t])) {
   xs <- sol$x
   if (is.null(sim)) { set.seed(seed); sim <- simulate_reflected_jd(params=params, thresholds=xs) }
   t <- sim$time; X <- sim$X; xL <- xs$xL; xU <- xs$xU; xk <- xs$xk; xl <- xs$xl
   plotfun <- function() {
     .draw_reflected_panel(t, X, xL, xU, xk, xl, top_blank=top_blank, bottom_blank=bottom_blank)
-    axis(1); mtext("time", side=1, line=2)
+    axis(1)
+    if (show_x_axis_title || show_y_axis_title) {
+      title(xlab = if (show_x_axis_title) x_axis_title else "",
+            ylab = if (show_y_axis_title) y_axis_title else "")
+    }
   }
   render_and_save(out_base, plotfun, show=show, save=save, dir=dir)
 }
@@ -1053,7 +1069,7 @@ plot_controls <- function(sim, show=interactive(), save=TRUE,
          lwd=1.6, ylim=rng, lty=2)
     lines(sim$time, sim$U, type="s", lwd=1.6)
     legend("topleft",
-           legend=c(expression(L[t]~"(pushes down)"), expression(U[t]~"(pushes up)")),
+           legend=c(expression(D[t]~"(pushes down)"), expression(U[t]~"(pushes up)")),
            lty=c(2,1), lwd=2, bty="n")
     box()
   }
@@ -1073,13 +1089,18 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
                                          margins = c(3.2, 3.25, 1.05, 0.9),
                                          axis_mgp = c(2.2, 0.7, 0),
                                          tcl = -0.25,
-                                         show_axis_titles = TRUE,
+                                         show_x_axis_title = TRUE,
+                                         show_y_axis_title = TRUE,
+                                         x_axis_title = "time",
+                                         y_axis_title = expression(L[t], U[t]),
                                          show_tick_labels = TRUE,
                                          tick_cex = 1.7,
                                          base_cex = 1, mex = 1) { 
   xs <- sol$x
   if (is.null(sim)) { set.seed(seed); sim <- simulate_reflected_jd(params=params, thresholds=xs) }
   t <- sim$time; X <- sim$X; xL <- xs$xL; xU <- xs$xU; xk <- xs$xk; xl <- xs$xl
+  top_y_axis_title <- y_axis_title[1]
+  bottom_y_axis_title <- if (length(y_axis_title) >= 2) y_axis_title[2] else y_axis_title[1]
   
   bottom <- margins[1]; left <- margins[2]; top <- margins[3]; right <- margins[4]
   
@@ -1090,17 +1111,18 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
     
     layout(matrix(1:3, nrow=3), heights = heights)
     
-    # --- TOP: L_t
+    # --- TOP: D_t
     par(mar = c(0.4, left, top, right),
         mgp=axis_mgp, tcl=tcl,
         cex = base_cex, mex = mex,
         cex.axis=tick_cex)
     plot(t, sim$L, type="s",
-         xlab="", ylab=if (show_axis_titles) expression(L[t]) else "",
+         xlab="",
+         ylab=if (show_y_axis_title) top_y_axis_title else "",
          xaxt="n", yaxt="n",
          lwd=2, col = "#228B22")
     axis(2, labels = show_tick_labels)
-    legend("topleft", legend = expression(L[t]), cex = 1.5,
+    legend("topleft", legend = expression(D[t]), cex = 1,
            lty = 1, lwd = 2, col = "#228B22", bty = "n")
     box()
     
@@ -1119,13 +1141,13 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
         cex = base_cex, mex = mex,
         cex.axis=tick_cex)
     plot(t, sim$U, type="s",
-         xlab=if (show_axis_titles) "time" else "",
-         ylab=if (show_axis_titles) expression(U[t]) else "",
+         xlab=if (show_x_axis_title) x_axis_title else "",
+         ylab=if (show_y_axis_title) bottom_y_axis_title else "",
          xaxt="n", yaxt="n",
          lwd=2, col = "#B22222")
     axis(1, labels = show_tick_labels)
     axis(2, labels = show_tick_labels)
-    legend("topleft", legend = expression(U[t]), cex = 1.7,
+    legend("topleft", legend = expression(U[t]), cex = 1,
            lty = 1, lwd = 2, col = "#B22222", bty = "n")
     box()
   }
@@ -1690,6 +1712,13 @@ fit_best_family <- function(
 
 
 
+
+
+
+
+
+
+
 # # ---------------------- EXAMPLE -----------------------------------------------
 # Parameters
 p <- make_params(b = 0, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1, l = 1)
@@ -1709,7 +1738,9 @@ diagnose(sol_opt)
 # Plot H and simulate the reflected process
 plot_H(sol_opt, p, show = TRUE, save = TRUE, 
        top_blank = 0.075, bottom_blank = 0.05, 
-       margins = c(2, 2, 1, 1), show_axis_titles = FALSE, tick_cex = 1)
+       margins = c(2, 2, 1, 1),
+       show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+       tick_cex = 1)
 plot_H_prime(sol_opt, p, show = TRUE, save = FALSE)
 sim <- simulate_reflected_jd(params=p, thresholds=sol_opt$x, seed = 123)
 plot_reflected_jd(sol_opt, p, sim=sim, show=TRUE, save=TRUE)
@@ -1717,7 +1748,7 @@ plot_controls(sim, show=TRUE, save=TRUE)
 plot_reflected_with_controls(sol_opt, p, sim, top_blank = 0, bottom_blank = 0, 
                              heights = c(0.7, 1.7, 0.85), draw_legend = FALSE,
                              margins = c(2, 2, 1, 1), axis_mgp = c(0.3, 0.7, 0),
-                             show_axis_titles = FALSE, tick_cex = 1,
+                             show_x_axis_title = FALSE, show_y_axis_title = FALSE, tick_cex = 1,
                              show=TRUE, save=TRUE)
 
 # ---------------------- EXAMPLE SWEEPER ---------------------------------------
@@ -2016,14 +2047,14 @@ plot_sweep(
 sweep_l <- comparative_sweeper(
   sweep_param  = "l",
   sweep_values = seq(1, 5, by = 0.01),
-  b = -3, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
+  b = -5, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
   save = TRUE
 )
 plot_sweep(
   sweep_obj = sweep_l,
   title = FALSE, axis_labs = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE, 
+  save = TRUE
 )
 # Fitting from family of functions
 res <- sweep_l$results
