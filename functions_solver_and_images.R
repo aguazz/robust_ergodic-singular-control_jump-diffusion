@@ -1092,15 +1092,28 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
                                          show_x_axis_title = TRUE,
                                          show_y_axis_title = TRUE,
                                          x_axis_title = "time",
-                                         y_axis_title = expression(L[t], U[t]),
+                                         y_axis_title = list(top = expression(L[t]),
+                                                             bottom = expression(U[t])),
                                          show_tick_labels = TRUE,
                                          tick_cex = 1.7,
                                          base_cex = 1, mex = 1) { 
   xs <- sol$x
   if (is.null(sim)) { set.seed(seed); sim <- simulate_reflected_jd(params=params, thresholds=xs) }
   t <- sim$time; X <- sim$X; xL <- xs$xL; xU <- xs$xU; xk <- xs$xk; xl <- xs$xl
-  top_y_axis_title <- y_axis_title[1]
-  bottom_y_axis_title <- if (length(y_axis_title) >= 2) y_axis_title[2] else y_axis_title[1]
+  
+  if (is.list(y_axis_title)) {
+    y_axis_title_top <- y_axis_title[["top"]]
+    y_axis_title_bottom <- y_axis_title[["bottom"]]
+    if (is.null(y_axis_title_top) && length(y_axis_title) >= 1) {
+      y_axis_title_top <- y_axis_title[[1]]
+    }
+    if (is.null(y_axis_title_bottom)) {
+      y_axis_title_bottom <- y_axis_title_top
+    }
+  } else {
+    y_axis_title_top <- y_axis_title
+    y_axis_title_bottom <- y_axis_title
+  }
   
   bottom <- margins[1]; left <- margins[2]; top <- margins[3]; right <- margins[4]
   
@@ -1117,8 +1130,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
         cex = base_cex, mex = mex,
         cex.axis=tick_cex)
     plot(t, sim$L, type="s",
-         xlab="",
-         ylab=if (show_y_axis_title) top_y_axis_title else "",
+         xlab="", ylab=if (show_y_axis_title) y_axis_title_top else "",
          xaxt="n", yaxt="n",
          lwd=2, col = "#228B22")
     axis(2, labels = show_tick_labels)
@@ -1142,7 +1154,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
         cex.axis=tick_cex)
     plot(t, sim$U, type="s",
          xlab=if (show_x_axis_title) x_axis_title else "",
-         ylab=if (show_y_axis_title) bottom_y_axis_title else "",
+         ylab=if (show_y_axis_title) y_axis_title_bottom else "",
          xaxt="n", yaxt="n",
          lwd=2, col = "#B22222")
     axis(1, labels = show_tick_labels)
@@ -1282,7 +1294,11 @@ plot_sweep <- function(
     save = FALSE,
     cols = c("#B22222", "#1E90FF", "#8A2BE2", "#228B22"),
     ltys = c(1, 1, 1, 1),
-    title = TRUE, axis_labs = TRUE,
+    title = TRUE,
+    show_x_axis_title = TRUE,
+    show_y_axis_title = TRUE,
+    x_axis_title = NULL,
+    y_axis_title = NULL,
     plot_gamma = FALSE, 
     gamma_layout = c("stacked","separate")
 ) {
@@ -1344,6 +1360,48 @@ plot_sweep <- function(
   
   # nice label for titles (e.g. "1/mu" instead of "inv_mu")
   param_label_str <- if (sweep_param == "inv_mu") "1/mu" else sweep_param
+  default_x_axis_title <- switch(sweep_param,
+                                 "b"      = expression(b),
+                                 "delta"  = expression(delta),
+                                 "r"      = expression(r),
+                                 "eps"    = expression(epsilon),
+                                 "sigma"  = expression(sigma),
+                                 "mu"     = expression(mu),
+                                 "inv_mu" = expression(1/mu),
+                                 "u"      = expression(u),
+                                 "l"      = expression(l),
+                                 sweep_param)
+  if (is.null(x_axis_title)) {
+    x_axis_title <- default_x_axis_title
+  }
+  
+  default_y_axis_title_thresholds <- "threshold value"
+  default_y_axis_title_gamma <- expression(gamma)
+  if (is.null(y_axis_title)) {
+    y_axis_title_thresholds <- default_y_axis_title_thresholds
+    y_axis_title_gamma <- default_y_axis_title_gamma
+  } else if (is.list(y_axis_title)) {
+    if (is.null(names(y_axis_title))) {
+      y_axis_title_thresholds <- y_axis_title[[1]]
+      y_axis_title_gamma <- if (length(y_axis_title) >= 2L) {
+        y_axis_title[[2]]
+      } else {
+        y_axis_title[[1]]
+      }
+    } else {
+      y_axis_title_thresholds <- y_axis_title[["thresholds"]]
+      y_axis_title_gamma <- y_axis_title[["gamma"]]
+      if (is.null(y_axis_title_thresholds)) {
+        y_axis_title_thresholds <- default_y_axis_title_thresholds
+      }
+      if (is.null(y_axis_title_gamma)) {
+        y_axis_title_gamma <- default_y_axis_title_gamma
+      }
+    }
+  } else {
+    y_axis_title_thresholds <- y_axis_title
+    y_axis_title_gamma <- y_axis_title
+  }
   
   # y-range for thresholds
   ylm_th <- range(as.numeric(unlist(res[ok, c("xL","xk","xl","xU")])), na.rm = TRUE)
@@ -1355,33 +1413,20 @@ plot_sweep <- function(
     ylm_g <- range(res$gamma[ok], na.rm = TRUE)
   }
   
-  xlab_expr <- if (axis_labs) {
-    switch(sweep_param,
-           "b"      = expression(b),
-           "delta"  = expression(delta),
-           "r"      = expression(r),
-           "eps"    = expression(epsilon),
-           "sigma"  = expression(sigma),
-           "mu"     = expression(mu),
-           "inv_mu" = expression(1/mu),
-           "u"      = expression(u),
-           "l"      = expression(l),
-           sweep_param)
-  } else ""
-  
   title_str   <- if (title)
     sprintf("Ambiguity thresholds & barriers vs %s", param_label_str) else ""
   title_gamma <- if (title)
     sprintf("Ergodic value %s vs %s", "\u03b3", param_label_str) else ""
   
   ## ---------- Helper to draw thresholds-only panel ----------
-  thresholds_panel <- function(xlab_bottom = TRUE, mar_override = NULL) {
+  thresholds_panel <- function(show_x_title = TRUE, mar_override = NULL) {
     mar <- if (is.null(mar_override)) c(2.2, 2.2, 1.5, 1.2) else mar_override
     op <- par(xaxs = "i", mar = mar, cex.axis=1.4); on.exit(par(op), add = TRUE)
     
-    xlab <- if (xlab_bottom) xlab_expr else ""
+    xlab <- if (show_x_title && show_x_axis_title) x_axis_title else ""
     plot(res$sweep_value, res$xL, type = "n", xlab = xlab,
-         ylab = ifelse(axis_labs, "threshold value", ""), ylim = ylm_th)
+         ylab = if (show_y_axis_title) y_axis_title_thresholds else "",
+         ylim = ylm_th)
     grid()
     lines(res$sweep_value, res$xL, lwd = 2, lty = ltys[1], col = cols[1])
     lines(res$sweep_value, res$xk, lwd = 2, lty = ltys[2], col = cols[2])
@@ -1395,15 +1440,17 @@ plot_sweep <- function(
   }
   
   ## ---------- Helper to draw gamma-only panel ----------
-  gamma_panel <- function(xlab_bottom = TRUE, mar_override = NULL) {
+  gamma_panel <- function(show_x_title = FALSE, show_x_axis_ticks = TRUE,
+                          mar_override = NULL) {
     mar  <- if (is.null(mar_override)) c(2.2, 2.2, 1.5, 1.2) else mar_override
     op   <- par(xaxs = "i", mar = mar, cex.axis=1.4); on.exit(par(op), add = TRUE)
     
-    xlab <- if (xlab_bottom) xlab_expr else ""
-    xaxt <- if (xlab_bottom) "s" else "n"   # hide x-axis when xlab_bottom = FALSE
+    xlab <- if (show_x_title && show_x_axis_title) x_axis_title else ""
+    xaxt <- if (show_x_axis_ticks) "s" else "n"
     
     plot(res$sweep_value, res$gamma, type = "l", lwd = 2,
-         xlab = xlab, ylab = expression(gamma),
+         xlab = xlab,
+         ylab = if (show_y_axis_title) y_axis_title_gamma else "",
          ylim = ylm_g, xaxt = xaxt)
     grid()
     legend("topleft", legend = expression(gamma), lwd = 2, bty = "n")
@@ -1413,7 +1460,7 @@ plot_sweep <- function(
   ## ======================= CASE 1: thresholds only =======================
   if (!plot_gamma) {
     plotfun <- function() {
-      thresholds_panel()
+      thresholds_panel(show_x_title = TRUE)
     }
     
     if (exists("render_and_save")) {
@@ -1431,8 +1478,9 @@ plot_sweep <- function(
     
     ## ======================= CASE 2: gamma + thresholds, separate =======================
   } else if (gamma_layout == "separate") {
-    plotfun_th <- function() thresholds_panel()
-    plotfun_g  <- function() gamma_panel()
+    plotfun_th <- function() thresholds_panel(show_x_title = TRUE)
+    plotfun_g  <- function() gamma_panel(show_x_title = FALSE,
+                                         show_x_axis_ticks = TRUE)
     
     if (exists("render_and_save")) {
       render_and_save(fname_base = out_name,
@@ -1463,10 +1511,11 @@ plot_sweep <- function(
       layout(matrix(1:2, nrow = 2), heights = c(0.35, 0.65))  # (% gamma, % thresholds)
       
       # Top: gamma (shared x, no axis)
-      gamma_panel(xlab_bottom = FALSE, mar_override = c(0.4, 3, 1.05, 0.9))
+      gamma_panel(show_x_title = FALSE, show_x_axis_ticks = FALSE,
+                  mar_override = c(0.4, 3, 1.05, 0.9))
       
       # Bottom: thresholds (x-axis shown)
-      thresholds_panel(xlab_bottom = TRUE, mar_override = c(3, 3, 0.4, 0.9))
+      thresholds_panel(show_x_title = TRUE, mar_override = c(3, 3, 0.4, 0.9))
     }
     
     if (exists("render_and_save")) {
@@ -1738,8 +1787,8 @@ diagnose(sol_opt)
 # Plot H and simulate the reflected process
 plot_H(sol_opt, p, show = TRUE, save = TRUE, 
        top_blank = 0.075, bottom_blank = 0.05, 
-       margins = c(2, 2, 1, 1),
-       show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+       margins = c(3, 2, 1, 1),
+       show_x_axis_title = TRUE, show_y_axis_title = FALSE,
        tick_cex = 1)
 plot_H_prime(sol_opt, p, show = TRUE, save = FALSE)
 sim <- simulate_reflected_jd(params=p, thresholds=sol_opt$x, seed = 123)
@@ -1747,8 +1796,10 @@ plot_reflected_jd(sol_opt, p, sim=sim, show=TRUE, save=TRUE)
 plot_controls(sim, show=TRUE, save=TRUE)
 plot_reflected_with_controls(sol_opt, p, sim, top_blank = 0, bottom_blank = 0, 
                              heights = c(0.7, 1.7, 0.85), draw_legend = FALSE,
-                             margins = c(2, 2, 1, 1), axis_mgp = c(0.3, 0.7, 0),
-                             show_x_axis_title = FALSE, show_y_axis_title = FALSE, tick_cex = 1,
+                             margins = c(3, 2, 1, 1), axis_mgp = c(1.9, 0.7, 0),
+                             show_x_axis_title = TRUE, x_axis_title = "t",
+                             show_y_axis_title = FALSE, 
+                             tick_cex = 1,
                              show=TRUE, save=TRUE)
 
 # ---------------------- EXAMPLE SWEEPER ---------------------------------------
@@ -1760,12 +1811,12 @@ cost_matrix <- matrix(c(1, 1,
 sweep_b <- comparative_sweeper(
   sweep_param  = "b",
   sweep_values = seq(-10, 10, by = 0.01),
-  delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1.5, l = 1,
+  delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1, l = 1,
   save = TRUE
 )
 plot_sweep(
   sweep_obj = sweep_b,
-  title = FALSE, axis_labs = FALSE,
+  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
   save = TRUE, 
 )
@@ -1783,7 +1834,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_b,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1803,7 +1854,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_delta,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1836,7 +1887,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_r,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1869,7 +1920,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_eps,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1902,7 +1953,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_sigma,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1935,7 +1986,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_mu,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1968,7 +2019,7 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_inv_mu,
-    title = FALSE, axis_labs = FALSE,
+    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE, 
   )
@@ -1998,7 +2049,7 @@ sweep_u <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_u,
-  title = FALSE, axis_labs = FALSE,
+  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
   save = TRUE, 
 )
@@ -2011,7 +2062,7 @@ sweep_u <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_u,
-  title = FALSE, axis_labs = FALSE,
+  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
   save = TRUE, 
 )
@@ -2039,7 +2090,7 @@ sweep_l <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_l,
-  title = FALSE, axis_labs = FALSE,
+  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
   save = TRUE, 
 )
@@ -2052,7 +2103,7 @@ sweep_l <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_l,
-  title = FALSE, axis_labs = FALSE,
+  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
   plot_gamma = TRUE, gamma_layout = "stacked",
   save = TRUE
 )
