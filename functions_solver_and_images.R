@@ -835,6 +835,7 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
                    y_axis_title = expression(H(x) == V*minute*(x)),
                    show_tick_labels = TRUE,
                    tick_cex = 1.7,
+                   axis_title_cex = 1,
                    base_cex = 1, mex = 1) {
   
   xs   <- unlist(sol$x)[c("xL","xk","xl","xU")]
@@ -860,7 +861,8 @@ plot_H <- function(sol, params, show=interactive(), save=TRUE, n = 600,
         mar = margins,
         mgp = axis_mgp,
         tcl = tcl,
-        cex.axis = tick_cex)
+        cex.axis = tick_cex,
+        cex.lab = axis_title_cex)
     
     curve(sol$H(x), from=x_from, to=x_to, n=n,
           xlab=if (show_x_axis_title) x_axis_title else "",
@@ -902,7 +904,8 @@ plot_H_prime <- function(sol, params, show=interactive(), save=TRUE, n = 800,
                          show_x_axis_title = FALSE,
                          show_y_axis_title = TRUE,
                          x_axis_title = expression(x),
-                         y_axis_title = expression(H*minute*(x) == W(x))) {
+                         y_axis_title = expression(H*minute*(x) == W(x)),
+                         axis_title_cex = 1) {
   stopifnot(!is.null(sol$Hp))
   
   xs   <- unlist(sol$x)[c("xL","xk","xl","xU")]
@@ -939,7 +942,7 @@ plot_H_prime <- function(sol, params, show=interactive(), save=TRUE, n = 800,
   ylim_y <- ylim_y + diff(ylim_y)/frac_band * c(-bottom_blank, top_blank)
   
   plotfun <- function() {
-    op <- par(xaxs="i"); on.exit(par(op), add=TRUE)
+    op <- par(xaxs="i", cex.lab = axis_title_cex); on.exit(par(op), add=TRUE)
     
     plot(xg, yg, type="l",
          xlab=if (show_x_axis_title) x_axis_title else "",
@@ -1046,7 +1049,8 @@ plot_reflected_jd <- function(sol, params, sim=NULL, seed=123, show=interactive(
                               show_x_axis_title = TRUE,
                               show_y_axis_title = FALSE,
                               x_axis_title = "time",
-                              y_axis_title = expression(bar(X)[t])) {
+                              y_axis_title = expression(bar(X)[t]),
+                              axis_title_cex = 1) {
   xs <- sol$x
   if (is.null(sim)) { set.seed(seed); sim <- simulate_reflected_jd(params=params, thresholds=xs) }
   t <- sim$time; X <- sim$X; xL <- xs$xL; xU <- xs$xU; xk <- xs$xk; xl <- xs$xl
@@ -1055,18 +1059,20 @@ plot_reflected_jd <- function(sol, params, sim=NULL, seed=123, show=interactive(
     axis(1)
     if (show_x_axis_title || show_y_axis_title) {
       title(xlab = if (show_x_axis_title) x_axis_title else "",
-            ylab = if (show_y_axis_title) y_axis_title else "")
+            ylab = if (show_y_axis_title) y_axis_title else "",
+            cex.lab = axis_title_cex)
     }
   }
   render_and_save(out_base, plotfun, show=show, save=save, dir=dir)
 }
 
 plot_controls <- function(sim, show=interactive(), save=TRUE,
-                          out_base="singular_controls", dir="figures") {
+                          out_base="singular_controls", dir="figures",
+                          axis_title_cex = 1) {
   plotfun <- function() {
     rng <- range(sim$U, sim$L)
     plot(sim$time, sim$L, type="s", xlab="time", ylab="cumulative push",
-         lwd=1.6, ylim=rng, lty=2)
+         lwd=1.6, ylim=rng, lty=2, cex.lab = axis_title_cex)
     lines(sim$time, sim$U, type="s", lwd=1.6)
     legend("topleft",
            legend=c(expression(D[t]~"(pushes down)"), expression(U[t]~"(pushes up)")),
@@ -1096,6 +1102,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
                                                              bottom = expression(U[t])),
                                          show_tick_labels = TRUE,
                                          tick_cex = 1.7,
+                                         axis_title_cex = 1,
                                          base_cex = 1, mex = 1) { 
   xs <- sol$x
   if (is.null(sim)) { set.seed(seed); sim <- simulate_reflected_jd(params=params, thresholds=xs) }
@@ -1128,7 +1135,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
     par(mar = c(0.4, left, top, right),
         mgp=axis_mgp, tcl=tcl,
         cex = base_cex, mex = mex,
-        cex.axis=tick_cex)
+        cex.axis=tick_cex, cex.lab = axis_title_cex)
     plot(t, sim$L, type="s",
          xlab="", ylab=if (show_y_axis_title) y_axis_title_top else "",
          xaxt="n", yaxt="n",
@@ -1142,7 +1149,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
     par(mar = c(0.2, left, 0.2, right),
         mgp=axis_mgp, tcl=tcl,
         cex = base_cex, mex = mex,
-        cex.axis=tick_cex)
+        cex.axis=tick_cex, cex.lab = axis_title_cex)
     .draw_reflected_panel(t, X, xL, xU, xk, xl,
                           top_blank=top_blank, bottom_blank=bottom_blank,
                           draw_legend=draw_legend)
@@ -1151,7 +1158,7 @@ plot_reflected_with_controls <- function(sol, params, sim=NULL, seed=123,
     par(mar = c(bottom, left, 0.4, right),
         mgp=axis_mgp, tcl=tcl,
         cex = base_cex, mex = mex,
-        cex.axis=tick_cex)
+        cex.axis=tick_cex, cex.lab = axis_title_cex)
     plot(t, sim$U, type="s",
          xlab=if (show_x_axis_title) x_axis_title else "",
          ylab=if (show_y_axis_title) y_axis_title_bottom else "",
@@ -1299,10 +1306,14 @@ plot_sweep <- function(
     show_y_axis_title = TRUE,
     x_axis_title = NULL,
     y_axis_title = NULL,
+    axis_title_cex = 1,
+    margins = c(2.2, 2.2, 1.5, 1.2),
+    axis_mgp = c(3, 1, 0),
     plot_gamma = FALSE, 
     gamma_layout = c("stacked","separate")
 ) {
   gamma_layout <- match.arg(gamma_layout)
+  bottom <- margins[1]; left <- margins[2]; top <- margins[3]; right <- margins[4]
   
   # Accept either the list returned by comparative_sweeper() or a bare data.frame
   res <- if (is.data.frame(sweep_obj)) {
@@ -1420,8 +1431,10 @@ plot_sweep <- function(
   
   ## ---------- Helper to draw thresholds-only panel ----------
   thresholds_panel <- function(show_x_title = TRUE, mar_override = NULL) {
-    mar <- if (is.null(mar_override)) c(2.2, 2.2, 1.5, 1.2) else mar_override
-    op <- par(xaxs = "i", mar = mar, cex.axis=1.4); on.exit(par(op), add = TRUE)
+    mar <- if (is.null(mar_override)) margins else mar_override
+    op <- par(xaxs = "i", mar = mar, mgp = axis_mgp,
+              cex.axis = 1.4, cex.lab = axis_title_cex)
+    on.exit(par(op), add = TRUE)
     
     xlab <- if (show_x_title && show_x_axis_title) x_axis_title else ""
     plot(res$sweep_value, res$xL, type = "n", xlab = xlab,
@@ -1442,8 +1455,10 @@ plot_sweep <- function(
   ## ---------- Helper to draw gamma-only panel ----------
   gamma_panel <- function(show_x_title = FALSE, show_x_axis_ticks = TRUE,
                           mar_override = NULL) {
-    mar  <- if (is.null(mar_override)) c(2.2, 2.2, 1.5, 1.2) else mar_override
-    op   <- par(xaxs = "i", mar = mar, cex.axis=1.4); on.exit(par(op), add = TRUE)
+    mar  <- if (is.null(mar_override)) margins else mar_override
+    op   <- par(xaxs = "i", mar = mar, mgp = axis_mgp,
+                cex.axis = 1.4, cex.lab = axis_title_cex)
+    on.exit(par(op), add = TRUE)
     
     xlab <- if (show_x_title && show_x_axis_title) x_axis_title else ""
     xaxt <- if (show_x_axis_ticks) "s" else "n"
@@ -1512,10 +1527,11 @@ plot_sweep <- function(
       
       # Top: gamma (shared x, no axis)
       gamma_panel(show_x_title = FALSE, show_x_axis_ticks = FALSE,
-                  mar_override = c(0.4, 3, 1.05, 0.9))
+                  mar_override = c(0.4, left, top, right))
       
       # Bottom: thresholds (x-axis shown)
-      thresholds_panel(show_x_title = TRUE, mar_override = c(3, 3, 0.4, 0.9))
+      thresholds_panel(show_x_title = TRUE,
+                       mar_override = c(bottom, left, 0.4, right))
     }
     
     if (exists("render_and_save")) {
@@ -1788,7 +1804,8 @@ diagnose(sol_opt)
 plot_H(sol_opt, p, show = TRUE, save = TRUE, 
        top_blank = 0.075, bottom_blank = 0.05, 
        margins = c(3, 2, 1, 1),
-       show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+       show_x_axis_title = TRUE, show_y_axis_title = FALSE, 
+       axis_mgp = c(2.2, 0.7, 0), axis_title_cex = 1.4,
        tick_cex = 1)
 plot_H_prime(sol_opt, p, show = TRUE, save = FALSE)
 sim <- simulate_reflected_jd(params=p, thresholds=sol_opt$x, seed = 123)
@@ -1796,11 +1813,71 @@ plot_reflected_jd(sol_opt, p, sim=sim, show=TRUE, save=TRUE)
 plot_controls(sim, show=TRUE, save=TRUE)
 plot_reflected_with_controls(sol_opt, p, sim, top_blank = 0, bottom_blank = 0, 
                              heights = c(0.7, 1.7, 0.85), draw_legend = FALSE,
-                             margins = c(3, 2, 1, 1), axis_mgp = c(1.9, 0.7, 0),
+                             margins = c(3, 2, 1, 1), axis_mgp = c(2.2, 0.7, 0),
                              show_x_axis_title = TRUE, x_axis_title = "t",
-                             show_y_axis_title = FALSE, 
+                             show_y_axis_title = FALSE, axis_title_cex = 1.4,
                              tick_cex = 1,
                              show=TRUE, save=TRUE)
+
+
+
+
+# # ---------------------- EXAMPLE (Ambiguity vs Certainity) ---------------------
+# Parameters
+p_sure <- make_params(b = 1, delta = 0, r = 1, eps = 0, sigma = 1, mu = 1, u = 1, l = 1)
+xL0 <- -0.5; xk0 <- -0.1; xl0 <- 0.5; xU0 <- 1
+# Optimal H (outer solver, no ambiguity)
+sol_opt_sure <- solve_optimal_barriers(p_sure, xL0, xk0, xl0, xU0, verbose=TRUE, 
+                                  switch_to_newton = FALSE, tol_regime_switch = 1e-3)
+diagnose(sol_opt_sure)
+# Plot H and simulate the reflected process
+plot_H(sol_opt_sure, p_sure, show = TRUE, save = TRUE, 
+       top_blank = 0.075, bottom_blank = 0.05, 
+       margins = c(3, 2, 1, 1),
+       show_x_axis_title = TRUE, show_y_axis_title = FALSE, 
+       axis_mgp = c(2.2, 0.7, 0), axis_title_cex = 1.4,
+       tick_cex = 1)
+# plot_H_prime(sol_opt_sure, p, show = TRUE, save = FALSE)
+sim <- simulate_reflected_jd(params=p_sure, thresholds=sol_opt_sure$x, seed = 123)
+# plot_reflected_jd(sol_opt, p, sim=sim, show=TRUE, save=TRUE)
+# plot_controls(sim, show=TRUE, save=TRUE)
+plot_reflected_with_controls(sol_opt_sure, p_sure, sim, top_blank = 0, bottom_blank = 0, 
+                             heights = c(0.7, 1.7, 0.85), draw_legend = FALSE,
+                             margins = c(3, 2, 1, 1), axis_mgp = c(2.2, 0.7, 0),
+                             show_x_axis_title = TRUE, x_axis_title = "t",
+                             show_y_axis_title = FALSE, axis_title_cex = 1.4,
+                             tick_cex = 1,
+                             show=TRUE, save=TRUE)
+# Suboptimal H (inner solver)
+p_ambg <- make_params(b = 1, delta = 1, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1, l = 1)
+xL_sure <- sol_opt_sure$x[[1]]; xk0_sure <- sol_opt_sure$x[[2]]
+xl0_sure <- sol_opt_sure$x[[3]]; xU0_sure <- sol_opt_sure$x[[4]]
+subopt_H_ambg <- build_suboptimal_H(p_ambg, xL_sure, xk0_sure, xl0_sure, xU0_sure)
+diagnose(subopt_H_ambg)
+# Plot H
+plot_H(subopt_H_ambg, p_ambg, show = TRUE, save = TRUE, 
+       top_blank = 0.075, bottom_blank = 0.05, 
+       margins = c(3, 2, 1, 1),
+       show_x_axis_title = TRUE, show_y_axis_title = FALSE, 
+       axis_mgp = c(2.2, 0.7, 0), axis_title_cex = 1.4,
+       tick_cex = 1)
+plot_H_prime(subopt_H_ambg, p_ambg, show = TRUE, save = FALSE)
+# plot_controls(sim, show=TRUE, save=TRUE)
+plot_reflected_with_controls(subopt_H_ambg, p_ambg, sim, top_blank = 0, bottom_blank = 0, 
+                             heights = c(0.7, 1.7, 0.85), draw_legend = FALSE,
+                             margins = c(3, 2, 1, 1), axis_mgp = c(2.2, 0.7, 0),
+                             show_x_axis_title = TRUE, x_axis_title = "t",
+                             show_y_axis_title = FALSE, axis_title_cex = 1.4,
+                             tick_cex = 1,
+                             show=TRUE, save=TRUE)
+
+
+
+
+
+
+
+
 
 # ---------------------- EXAMPLE SWEEPER ---------------------------------------
 cost_matrix <- matrix(c(1, 1,
@@ -1816,9 +1893,11 @@ sweep_b <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_b,
-  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+  title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+  margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+  axis_title_cex = 1.4,
   plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE, 
+  save = TRUE 
 )
 
 for (i in 1:nrow(cost_matrix)) {
@@ -1834,9 +1913,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_b,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE  
   )
   
 }
@@ -1854,9 +1935,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_delta,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_delta$results
@@ -1887,9 +1970,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_r,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_r$results
@@ -1920,9 +2005,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_eps,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_eps$results
@@ -1953,9 +2040,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_sigma,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_sigma$results
@@ -1986,9 +2075,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_mu,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_mu$results
@@ -2019,9 +2110,11 @@ for (i in 1:nrow(cost_matrix)) {
   )
   plot_sweep(
     sweep_obj = sweep_inv_mu,
-    title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE, 
+    save = TRUE 
   )
   # Fitting from family of functions
   res <- sweep_inv_mu$results
@@ -2049,9 +2142,11 @@ sweep_u <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_u,
-  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
-  plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE, 
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
+    plot_gamma = TRUE, gamma_layout = "stacked",
+    save = TRUE 
 )
 # b = -3
 sweep_u <- comparative_sweeper(
@@ -2062,9 +2157,11 @@ sweep_u <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_u,
-  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
-  plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE, 
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
+    plot_gamma = TRUE, gamma_layout = "stacked",
+    save = TRUE 
 )
 # Fitting from family of functions
 res <- sweep_u$results
@@ -2090,9 +2187,11 @@ sweep_l <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_l,
-  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
-  plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE, 
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
+    plot_gamma = TRUE, gamma_layout = "stacked",
+    save = TRUE 
 )
 # b = -3
 sweep_l <- comparative_sweeper(
@@ -2103,9 +2202,11 @@ sweep_l <- comparative_sweeper(
 )
 plot_sweep(
   sweep_obj = sweep_l,
-  title = FALSE, show_x_axis_title = FALSE, show_y_axis_title = FALSE,
-  plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE
+    title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
+    margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
+    axis_title_cex = 1.4,
+    plot_gamma = TRUE, gamma_layout = "stacked",
+    save = TRUE
 )
 # Fitting from family of functions
 res <- sweep_l$results
