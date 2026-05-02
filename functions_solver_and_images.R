@@ -5485,11 +5485,11 @@ for (i in 1:nrow(cost_matrix)) {
 }
 
 ## 7) Sweep u
-# b = 3
+# b = 2
 sweep_u <- comparative_sweeper(
   sweep_param  = "u",
-  sweep_values = seq(0.01, 5, by = 0.01),
-  b = 3, delta = 1, r = 1, eps = 0.5, sigma = 1, mu = 1, l = 1,
+  sweep_values = seq(0.01, 10, by = 0.01),
+  b = 2, delta = 1, r = 1, eps = 0.5, sigma = 1, mu = 1, l = 1,
   save = TRUE
 )
 plot_sweep(
@@ -5500,11 +5500,11 @@ plot_sweep(
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
 )
-# b = -3
+# b = -2
 sweep_u <- comparative_sweeper(
   sweep_param  = "u",
-  sweep_values = seq(0.01, 5, by = 0.01),
-  b = -3, delta = 1, r = 1, eps = 0.5, sigma = 1, mu = 1, l = 1,
+  sweep_values = seq(0.01, 10, by = 0.01),
+  b = -2, delta = 1, r = 1, eps = 0.5, sigma = 1, mu = 1, l = 1,
   save = TRUE
 )
 plot_sweep(
@@ -5513,7 +5513,7 @@ plot_sweep(
     margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
     axis_title_cex = 1.4,
     plot_gamma = TRUE, gamma_layout = "stacked",
-    save = TRUE 
+    save = TRUE  
 )
 # Fitting from family of functions
 res <- sweep_u$results
@@ -5530,11 +5530,11 @@ plot(x, y, pch = 16)
 lines(x, yy, lwd = 2, col = "red")
 
 ## 8) Sweep l
-# b = 3
+# b = 2
 sweep_l <- comparative_sweeper(
   sweep_param  = "l",
-  sweep_values = seq(1, 5, by = 0.01),
-  b = 3, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
+  sweep_values = seq(1, 10, by = 0.01),
+  b = 2, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
   save = TRUE
 )
 plot_sweep(
@@ -5545,11 +5545,11 @@ plot_sweep(
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
 )
-# b = -3
+# b = -2
 sweep_l <- comparative_sweeper(
   sweep_param  = "l",
-  sweep_values = seq(1, 5, by = 0.01),
-  b = -5, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
+  sweep_values = seq(1, 10, by = 0.01),
+  b = -2, delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1,
   save = TRUE
 )
 plot_sweep(
