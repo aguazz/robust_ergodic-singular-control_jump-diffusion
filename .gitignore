@@ -2,3 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
+*.Rproj
+
+# Local MiKTeX state/cache.
+.miktex-local/
+
+# Journal submission artifact; keep off public GitHub.
+/paper.pdf
