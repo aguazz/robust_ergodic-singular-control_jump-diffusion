@@ -5,22 +5,6 @@ cost_matrix <- matrix(c(1, 1,
                         2, 1,
                         1, 2), nrow = 3, byrow = T)
 
-## 1) Sweep b
-sweep_b <- comparative_sweeper(
-  sweep_param  = "b",
-  sweep_values = seq(-10, 10, by = 0.01),
-  delta = 1.0, r = 1, eps = 0.5, sigma = 1, mu = 1, u = 1, l = 1,
-  save = TRUE
-)
-plot_sweep(
-  sweep_obj = sweep_b,
-  title = FALSE, show_x_axis_title = TRUE, show_y_axis_title = FALSE,
-  margins = c(3.7, 2.2, 1.5, 1.2), axis_mgp = c(2.8, 1, 0), 
-  axis_title_cex = 1.4,
-  plot_gamma = TRUE, gamma_layout = "stacked",
-  save = TRUE 
-)
-
 for (i in 1:nrow(cost_matrix)) {
   
   cat("u = ", cost_matrix[i,1], ", l = ", "u = ", cost_matrix[i,2], ". \n", sep = "")
