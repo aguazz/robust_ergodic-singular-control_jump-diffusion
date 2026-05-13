@@ -29,6 +29,7 @@ run/
 
 figures/       Existing generated figures and cached grids.
 frames/        Generated animation frames.
+docs/          Lightweight function references and notes.
 legacy/        Backup copy of the original monolithic scripts.
 ```
 
@@ -76,6 +77,9 @@ sol$gamma
 The smoke check currently verifies the baseline solution
 `xL = -0.9900086`, `xk = -0.2214323`, `xl = 0.5642733`,
 `xU = 0.7511408`, and `gamma = 2.48011711465`.
+
+For a compact guide to the solver functions, arguments, and return objects, see
+[`docs/solver-reference.md`](docs/solver-reference.md).
 
 ## Reproducing outputs
 
