@@ -78,8 +78,9 @@ The smoke check currently verifies the baseline solution
 `xL = -0.9900086`, `xk = -0.2214323`, `xl = 0.5642733`,
 `xU = 0.7511408`, and `gamma = 2.48011711465`.
 
-For a compact guide to the solver functions, arguments, and return objects, see
-[`docs/solver-reference.md`](docs/solver-reference.md).
+For compact guides to the main APIs, see
+[`docs/solver-reference.md`](docs/solver-reference.md) and
+[`docs/simulation-reference.md`](docs/simulation-reference.md).
 
 ## Reproducing outputs
 
