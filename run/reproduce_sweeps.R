@@ -46,20 +46,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_delta$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 for (i in 1:nrow(cost_matrix)) {
@@ -81,20 +67,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_r$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 for (i in 1:nrow(cost_matrix)) {
@@ -116,20 +88,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_eps$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 for (i in 1:nrow(cost_matrix)) {
@@ -151,20 +109,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_sigma$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 for (i in 1:nrow(cost_matrix)) {
@@ -186,20 +130,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_mu$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 for (i in 1:nrow(cost_matrix)) {
@@ -221,20 +151,6 @@ for (i in 1:nrow(cost_matrix)) {
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE 
   )
-  # Fitting from family of functions
-  res <- sweep_inv_mu$results
-  ok  <- res$converged
-  x <- res$sweep_value[ok]
-  y <- res$gamma[ok]
-  fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-  fit_obj$best_family
-  coef(fit_obj$best_fit)
-  sum(residuals(fit_obj$best_fit)^2)
-  # Make a smooth curve over the same range
-  yy <- fit_obj$best_fit$m$fitted()
-  plot(x, y, pch = 16)
-  lines(x, yy, lwd = 2, col = "red")
-  
 }
 
 ## 7) Sweep u
@@ -268,20 +184,6 @@ plot_sweep(
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE  
 )
-# Fitting from family of functions
-res <- sweep_u$results
-ok  <- res$converged
-x <- res$sweep_value[ok]
-y <- res$gamma[ok]
-fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-fit_obj$best_family
-coef(fit_obj$best_fit)
-sum(residuals(fit_obj$best_fit)^2)
-# Make a smooth curve over the same range
-yy <- fit_obj$best_fit$m$fitted()
-plot(x, y, pch = 16)
-lines(x, yy, lwd = 2, col = "red")
-
 ## 8) Sweep l
 # b = 2
 sweep_l <- comparative_sweeper(
@@ -313,17 +215,3 @@ plot_sweep(
     plot_gamma = TRUE, gamma_layout = "stacked",
     save = TRUE
 )
-# Fitting from family of functions
-res <- sweep_l$results
-ok  <- res$converged
-x <- res$sweep_value[ok]
-y <- res$gamma[ok]
-fit_obj <- fit_best_family(x, y, criterion = "RSS", verbose = TRUE)
-fit_obj$best_family
-coef(fit_obj$best_fit)
-sum(residuals(fit_obj$best_fit)^2)
-# Make a smooth curve over the same range
-yy <- fit_obj$best_fit$m$fitted()
-plot(x, y, pch = 16)
-lines(x, yy, lwd = 2, col = "red")
-

@@ -37,13 +37,12 @@ legacy/        Backup copy of the original monolithic scripts.
 The code uses base R plus:
 
 - `nleqslv` for nonlinear systems.
-- `minpack.lm` for optional nonlinear curve fitting in sweep diagnostics.
 - `magick` only for optional PNG frame optimization.
 
 Install missing packages with:
 
 ```r
-install.packages(c("nleqslv", "minpack.lm", "magick"))
+install.packages(c("nleqslv", "magick"))
 ```
 
 ## Quick start
