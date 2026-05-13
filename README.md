@@ -16,11 +16,14 @@ src/
   solver.R        Numerical solver, diagnostics, and barrier equations.
   simulation.R    Reflected jump-diffusion simulation and pathwise costs.
   plotting.R      Static figures for the value derivative, paths, and controls.
-  animations.R    Frame-by-frame animation helpers.
   experiments/
     sweeps.R                    Parameter sweeps and sweep plots.
     misspecification.R          Misspecification grids, cache, tables, runners.
     misspecification_plotting.R Misspecification surface and slice plots.
+  animations/
+    rendering.R                 Shared PNG-frame rendering helpers.
+    solver_convergence.R        Solver-convergence animation frames.
+    control_canvas.R            Control/state/cost animation frames.
 
 run/
   smoke.R                      Fast numerical check.
@@ -38,15 +41,12 @@ legacy/        Backup copy of the original monolithic scripts.
 
 ## Requirements
 
-The code uses base R plus:
-
-- `nleqslv` for nonlinear systems.
-- `magick` only for optional PNG frame optimization.
+The code uses base R plus `nleqslv` for nonlinear systems.
 
 Install missing packages with:
 
 ```r
-install.packages(c("nleqslv", "magick"))
+install.packages("nleqslv")
 ```
 
 ## Quick start
@@ -86,7 +86,8 @@ For compact guides to the main APIs, see
 [`docs/simulation-reference.md`](docs/simulation-reference.md), and
 [`docs/plotting-reference.md`](docs/plotting-reference.md), plus
 [`docs/experiments-reference.md`](docs/experiments-reference.md) for sweeps and
-misspecification grids.
+misspecification grids and [`docs/animations-reference.md`](docs/animations-reference.md)
+for animation-frame helpers.
 
 ## Reproducing outputs
 
@@ -124,7 +125,7 @@ Frames are written under `frames/`.
 
 - Add numerical changes in `src/solver.R`.
 - Add baseline static-plot changes in `src/plotting.R` or animation changes in
-  `src/animations.R`.
+  `src/animations/`.
 - Add sweep and misspecification changes in `src/experiments/`.
 - Add new experiments as opt-in scripts under `run/`.
 - Keep generated files out of source modules. Loading `src/load.R` should
