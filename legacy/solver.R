@@ -1,60 +1,56 @@
 # Core numerical solver for the robust ergodic singular-control problem.
-#
-# This file implements the finite-dimensional solver used in the current paper:
-# - Section 3.2: HJB/free-boundary problem.
-# - Section 4.1: bang-bang ambiguity thresholds and Regime 1/Regime 2.
-# - Sections 4.2-4.3: exponential-jump ODE representation and matching systems.
-# - Section 5.1: numerical stability safeguards.
-# - Section 5.2 / Algorithm 1: two-stage inner/outer root search.
-#
-# Code notation:
-#   xL, xU : lower/upper reflecting barriers.
-#   xk     : drift-ambiguity threshold x^kappa.
-#   xl     : intensity-ambiguity threshold x^lambda.
-#   u, l   : upward/downward intervention costs c_U and c_D in the paper.
-#   gamma  : ergodic value.
-#
-# Loading this file defines functions only; runnable examples live in run/.
+# Source split from legacy/functions_solver_and_images.R; no examples are executed here.
 
-# ------------------------------- Basic utilities -------------------------------
-nz <- function(x, tol = 1e-16) abs(x) > tol
+# ================================== STABLE CORE ==================================
+# ============================== Sections 5.1 -- 5.3 ==============================
+# Implements the anchored inner solver (u_i^±) and optimal solver with robust numerics.
+# Differences vs. previous template:
+#   • PER-ROOT anchoring (x_{a,i,−}, x_{a,i,+}) from §5.1: anchor left if λ≥0, right if λ<0.
+#   • Region 2: IH(x_λ)=0 uses the anchored + stable form (Eq. (49)) via φ_1mexp.
+#   • All H, H' constructions and optimality residuals updated to use per-root anchors.
+# References: eqs. (25)–(31), (32), (35), (37)–(41) and their STABLE forms (46)–(51),
+#             plus optimality conditions (42)–(45) and stable analogues (52)–(55).
+# Paper: "Ergodic singular control for ambiguous compound-Poisson jump diffusion processes"
+#        (Sections 4–5; esp. 5.1–5.3).  [Anchoring, stability, and γ updates]
+# ---------------------------------------------------------------------------------
 
-# Stable relative exponential: exprel(z) = (exp(z) - 1) / z.
-# The Taylor branch avoids cancellation when z is close to zero.
+# --------------------------------- Utilities -------------------------------------
+nz <- function(x, tol=1e-16) abs(x) > tol
+
+# Stable "relative exponential": exprel(z) = (exp(z) - 1)/z with series near z=0
 exprel <- function(z) {
   out <- z
   small <- abs(z) < 1e-6
   out[!small] <- expm1(z[!small]) / z[!small]
+  # 1 + z/2 + z^2/6  when |z| is tiny (guarding cancellation)
   out[ small] <- 1 + 0.5*z[ small] + (z[ small]^2)/6
   out
 }
 
-# Stable phi(a, d) = (1 - exp(-a d)) / a.
-# This integral kernel appears in the anchored representation of Section 4.3.
+# Stable φ(a, d) = (1 - exp(-a d)) / a  with series near a=0  (used in Eq. (49))
 phi_1mexp <- function(a, d) {
   ad <- a * d
   d * exprel(-ad)
 }
 
+# Stable safe division
 safe_div <- function(num, den, tol=1e-12, msg="Division by ~0") {
   if (any(abs(den) < tol)) stop(msg)
   num / den
 }
 
-# Horner evaluation for c2*x^2 + c1*x + d0 and its derivative.
+# Stable Horner polynomial evaluation for quadratic: c2 x^2 + c1 x + d0
 poly2_eval  <- function(c2, c1, d0, x) (c2 * x + c1) * x + d0
 poly2_prime <- function(c2, c1, x) 2*c2 * x + c1
 
-# ----------------------------- Model ingredients -------------------------------
+# ---------------------------- Parameters & regions -------------------------------
 make_params <- function(b, delta, r, eps, sigma, mu, u, l) {
   stopifnot(mu > 0, sigma > 0, r > 0, eps >= 0, eps <= 1, delta >= 0, u >= 0, l >= 0)
   EY <- -1/mu
   list(b=b, delta=delta, r=r, eps=eps, sigma=sigma, mu=mu, EY=EY, u=u, l=l)
 }
 
-# Worst-case distortions in the three bang-bang regions from Section 4.1.
-# Region 1: H < 0 and IH < 0; Region 2: H > 0 and IH < 0;
-# Region 3: H > 0 and IH > 0.
+# Worst-case ambiguity per region (Sec. 4.2, eq. (21))
 region_ambiguity <- function(i, p) {
   if (i == 1)      list(kappa=-p$delta, lambda=p$r*(1+p$eps))
   else if (i == 2) list(kappa=+p$delta, lambda=p$r*(1+p$eps))
@@ -62,43 +58,45 @@ region_ambiguity <- function(i, p) {
   else stop("Region must be 1,2,3.")
 }
 
-# Coefficients of the second-order ODE for H_i in Section 4.3.
+# a_{i,·} (Eq. (26))
 region_a_coeffs <- function(i, p) {
   rc <- region_ambiguity(i, p)
-  a_st <- p$b + p$sigma*rc$kappa + p$r/p$mu
+  a_st <- p$b + p$sigma*rc$kappa + p$r/p$mu      # a* = b + σκ + r/μ
   list(
-    a1 = p$mu*a_st - rc$lambda,
-    a2 = a_st + 0.5*p$mu*p$sigma^2,
-    a3 = 0.5*p$sigma^2,
+    a1 = p$mu*a_st - rc$lambda,                   # a_{i,1}
+    a2 = a_st + 0.5*p$mu*p$sigma^2,               # a_{i,2}
+    a3 = 0.5*p$sigma^2,                           # a_{i,3} = σ^2/2
     a_star = a_st,
     lambda_wc = rc$lambda, kappa_wc = rc$kappa
   )
 }
 
-# Characteristic roots of the ODE in the explicit solution (4.18).
+# λ_i^± (28) with robust checks (S2)
 lambda_pm <- function(a_coeffs, tol_lambda=1e-12) {
   a1 <- a_coeffs$a1; a2 <- a_coeffs$a2; a3 <- a_coeffs$a3
   disc <- a2^2 - 4*a3*a1
-  if (disc <= 0) stop("Discriminant <= 0: parameters yield no real roots.")
+  if (disc <= 0) stop("Discriminant ≤ 0: parameters yield no real roots (check σ>0, λ*>0).")
   root <- sqrt(disc)
   lam_plus  <- (a2 + root)/(2*a3)
   lam_minus <- (a2 - root)/(2*a3)
   if (abs(lam_plus - lam_minus) <= tol_lambda) {
-    stop(paste0("Near-coincident characteristic roots. ",
-                "Use a repeated-root branch or relax tol_lambda; ",
-                "current separation=", signif(abs(lam_plus-lam_minus), 6)))
+    # (S2) repeated/near-coincident roots: not implemented here
+    stop(paste0("S2: near-coincident roots in λ± (|Δ| small). ",
+                "Use repeated-root branch or relax tol_lambda; ",
+                "current |λ+−λ−|=", signif(abs(lam_plus-lam_minus), 6)))
   }
   list(lam_plus=lam_plus, lam_minus=lam_minus, disc=disc)
 }
 
-# Polynomial part q_i in the gamma-free decomposition of (4.25)-(4.26).
-# Assumption 7 in the current paper excludes a_{i,1}=0; that degenerate cubic
-# branch is deliberately not implemented here.
+# ------------------------ q_i(x) coefficients (Sec. 4.1.1) ----------------------
+# Assumption 2: a_{i,1} != 0 -> quadratic polynomial; otherwise (S1) abort with message
 q_poly_coeffs <- function(a_coeffs, p, tol_a1=1e-12) {
   a1 <- a_coeffs$a1; a2 <- a_coeffs$a2; a3 <- a_coeffs$a3; mu <- p$mu
   if (abs(a1) <= tol_a1) {
-    stop("Degenerate case |a_{i,1}| ~= 0 detected; the cubic fallback is not implemented.")
+    # (S1) cubic fallback (Remark 1) not implemented in anchored γ-free decomposition
+    stop("S1: |a_{i,1}|≈0 detected. Use the cubic (Remark 1) branch for p_i(x).")
   }
+  # (29) with γ-free shift qi = pi - (μ/a1)γ   (qi independent of γ)
   c2 <- - mu / a1
   c1 <-  2*(mu*a2 - a1)/a1^2
   d0 <- ( 2*a1*a2 + 2*mu*a1*a3 - 2*mu*a2^2 )/a1^3
@@ -107,9 +105,8 @@ q_poly_coeffs <- function(a_coeffs, p, tol_a1=1e-12) {
 q_eval      <- function(qc, x) poly2_eval(qc$c2, qc$c1, qc$d0, x)
 qprime_eval <- function(qc, x) poly2_prime(qc$c2, qc$c1, x)
 
-# Per-root anchoring from the stable representation (4.24).
-# Growing exponentials are evaluated from the left endpoint, decaying ones from
-# the right endpoint; this keeps exp(-lambda*(x-anchor)) numerically tame.
+# ----------------------------- Anchoring (Sec. 5.1) -----------------------------
+# PER-ROOT anchors: for each root λ_i^±, choose left endpoint if λ≥0, right endpoint if λ<0.
 anchors_for_region <- function(lam_minus, lam_plus, x_left, x_right) {
   list(
     minus = if (lam_minus >= 0) x_left else x_right,
@@ -117,11 +114,12 @@ anchors_for_region <- function(lam_minus, lam_plus, x_left, x_right) {
   )
 }
 
-# Anchored exponential basis and derivative.
+# Helpers: anchored exponentials g(x) = exp(-λ (x - x_a)), g'(x) = -λ * g(x)
 g_eval  <- function(lambda, x, xa)  exp(-lambda * (x - xa))
 gp_eval <- function(lambda, x, xa) -lambda * exp(-lambda * (x - xa))
 
-# Ergodic value implied by the lower boundary condition; see (4.27).
+# ----------------------------- γ via (46) (stable) ------------------------------
+# γ = 0.5 σ^2 H1'(x) + A   with A from §4.2.1; derivative uses PER-ROOT anchors (Eq. (46))
 gamma_from_xL_stable <- function(xL, xa1m, xa1p, u1m, u1p, lam1, q1c, p) {
   sigma <- p$sigma; mu <- p$mu; r <- p$r; u <- p$u; delta <- p$delta; eps <- p$eps; b <- p$b
   A <- -u*(b - delta*p$sigma + r/mu) + u*(1+eps)*r/mu + xL^2
@@ -131,53 +129,19 @@ gamma_from_xL_stable <- function(xL, xa1m, xa1p, u1m, u1p, lam1, q1c, p) {
   0.5*sigma^2 * H1p + A
 }
 
-# Solve a 2x2 linear system and warn when the coefficient matrix is ill-conditioned.
+# ---------------------------- Matrix solve (2x2, LU) ----------------------------
 solve_2x2_LU <- function(M, b, tag="") {
+  # Condition estimates (W2)
   k2 <- tryCatch(kappa(M), error=function(e) Inf)
   if (is.finite(k2) && k2 >= 1e8 && k2 <= 1e12)
-    warning(sprintf("cond2(M) ~= %.3e for %s (ill-conditioned)", k2, tag))
+    warning(sprintf("W2: cond2(M)≈%.3e for %s (ill-conditioned)", k2, tag))
   if (is.infinite(k2) || k2 > 1e12)
-    warning(sprintf("cond2(M) ~= %s for %s", format(k2), tag))
+    warning(sprintf("W2 (strong): cond2(M)≈%s for %s", format(k2), tag))
   as.numeric(solve(M, b))
 }
 
-# Row scaling used in Section 5.1: when the raw 2x2 matrix is moderately
-# ill-conditioned, divide each row by its Euclidean norm before solving.
-solve_scaled_2x2 <- function(M_raw, b_raw, tag, scale_thresh = 50) {
-  k_raw <- tryCatch(kappa(M_raw), error = function(e) Inf)
-  if (is.finite(k_raw) && k_raw > scale_thresh) {
-    row_scale <- apply(M_raw, 1, function(row) max(1, sqrt(sum(row^2))))
-    M <- M_raw / row_scale
-    b <- b_raw / row_scale
-    x <- solve_2x2_LU(M, b, tag = paste0(tag, " [row-scaled]"))
-  } else {
-    row_scale <- c(1, 1)
-    M <- M_raw
-    b <- b_raw
-    x <- solve_2x2_LU(M, b, tag = tag)
-  }
-  list(x = x, M = M, b = b, row_scale = row_scale)
-}
-
-# Integral of one anchored exponential basis term over [from, to], evaluated
-# in the exponential-jump convolution at x_eval. This is the homogeneous part
-# of the IH(x^lambda) expression in (4.31), with the limiting formula when
-# mu is close to the characteristic root.
-anchored_exp_integral <- function(lambda, coeff, anchor, from, to, x_eval, mu, tol = 1e-6) {
-  if (to <= from) return(0)
-  if (abs(mu - lambda) < tol) {
-    mu * coeff * exp(-mu * (x_eval - to)) *
-      exp(-lambda * (to - anchor)) *
-      phi_1mexp(mu - lambda, to - from)
-  } else {
-    mu * coeff * (
-      exp(-mu * (x_eval - to)) * exp(-lambda * (to - anchor)) -
-        exp(-mu * (x_eval - from)) * exp(-lambda * (from - anchor))
-    ) / (mu - lambda)
-  }
-}
-
-# Antiderivative-like polynomial helper used in the polynomial part of IH.
+# -------------- Region 2 integrals for IH(xλ) (stable, eq. (49)) ---------------
+# Qi(y) helper: polynomial contribution used inside (49); depends on q_i and γ via (μ/a_{i,1})γ term
 Q_poly <- function(y, qi, ai1, gamma, mu) {
   c2 <- qi$c2; c1 <- qi$c1; d0 <- qi$d0
   term2 <- c2*( y^2/mu - 2*y/(mu^2) + 2/(mu^3) )
@@ -186,64 +150,32 @@ Q_poly <- function(y, qi, ai1, gamma, mu) {
   term2 + term1 + term0
 }
 
-region_value <- function(region, x, gamma) {
-  region$u_minus * g_eval(region$lam$lam_minus, x, region$anchor_minus) +
-    region$u_plus * g_eval(region$lam$lam_plus, x, region$anchor_plus) +
-    q_eval(region$q, x) + region$q$gamma_fac * gamma
-}
-
-region_slope <- function(region, x) {
-  region$u_minus * gp_eval(region$lam$lam_minus, x, region$anchor_minus) +
-    region$u_plus * gp_eval(region$lam$lam_plus, x, region$anchor_plus) +
-    qprime_eval(region$q, x)
-}
-
-# Central-difference Jacobian used by both root solvers.
-fd_jacobian <- function(z, fn, fd_step = 1e-6, f0 = NULL) {
-  if (is.null(f0)) f0 <- fn(z)
-  n <- length(z)
-  J <- matrix(0.0, length(f0), n)
-  for (j in seq_len(n)) {
-    h <- fd_step * (1 + abs(z[j]))
-    zp <- z
-    zm <- z
-    zp[j] <- z[j] + h
-    zm[j] <- z[j] - h
-    J[, j] <- (fn(zp) - fn(zm)) / (2*h)
-  }
-  J
-}
-
 # ============================== Inner solver (stable) ===========================
-# Build the candidate H for fixed barriers and ambiguity thresholds.
-# The linear systems below are the stable anchored systems from Section 5.2.
+# Builds suboptimal H using PER-ROOT anchored u_i^± per Sec. 5.2 (46)–(51)
 build_suboptimal_H <- function(p, xL, xk, xl, xU,
                                tol_gap=1e-10, tol_a1=1e-12, tol_lambda=1e-12,
                                kappa3_scale_thresh = 50,
                                tol_regime_switch = 1e-3) {
-  # If the intensity threshold is at or beyond the upper barrier, Region 3 is
-  # outside the continuation band. This is Regime 2 in Section 4.1.
+  # NEW: allow crossing xl ~ xU safely (avoid degenerate Region 3)
   tol_sw <- tol_regime_switch * (1 + abs(xU) + abs(xl))
   regime2 <- (xl > xU)
   if (!regime2 && (xU - xl) <= tol_sw) regime2 <- TRUE
   
-  # Effective split point for the piecewise H construction.
+  # effective split point for the *piecewise H construction*
   xlam_eff <- if (regime2) xU else xl
   
   
-  # Very small regions make the matching systems nearly collinear.
+  # Gaps and warnings (S3/W1)
   d1 <- xk - xL
   d2 <- xl - xk
   d3eff <- xU - xlam_eff
   
-  if (d1 <= tol_gap) warning("Small gap on Region 1 (xk - xL); matching system may be nearly singular.")
-  if (d2 <= tol_gap) warning("Small gap on Region 2 (xl - xk); matching system may be nearly singular.")
-  if (!regime2 && d3eff <= tol_gap) {
-    warning("Small gap on Region 3 (xU - xl); matching system may be nearly singular.")
-  }
+  if (d1 <= tol_gap) warning("S3/W1: small gap on I1 (xk - xL) → near-collinearity.")
+  if (d2 <= tol_gap) warning("S3/W1: small gap on I2 (xl - xk) → near-collinearity.")
+  if (!regime2 && d3eff <= tol_gap) warning("S3/W1: small gap on I3 (xU - xl) → near-collinearity.")
   
   
-  # Per-region ODE coefficients, characteristic roots, and polynomial parts.
+  # Per-region coefficients (a_{i,·}), λ±, and q_i
   a1c <- region_a_coeffs(1, p)
   a2c <- region_a_coeffs(2, p)
   a3c <- region_a_coeffs(3, p)
@@ -256,7 +188,7 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
   q2c <- q_poly_coeffs(a2c, p, tol_a1)
   q3c <- q_poly_coeffs(a3c, p, tol_a1)
   
-  # Per-root anchors for the stable representation.
+  # PER-ROOT anchors
   anc1 <- anchors_for_region(lam1$lam_minus, lam1$lam_plus, xL, xk)
   anc2 <- anchors_for_region(lam2$lam_minus, lam2$lam_plus, xk, xlam_eff)
   
@@ -267,25 +199,18 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
     anc3 <- list(minus = NA_real_, plus = NA_real_)
   }
   
-  # Convenience closures for anchored exponentials.
-  g1m <- function(x) g_eval(lam1$lam_minus, x, anc1$minus)
-  g1p <- function(x) g_eval(lam1$lam_plus,  x, anc1$plus)
-  g2m <- function(x) g_eval(lam2$lam_minus, x, anc2$minus)
-  g2p <- function(x) g_eval(lam2$lam_plus,  x, anc2$plus)
-  g3m <- function(x) g_eval(lam3$lam_minus, x, anc3$minus)
-  g3p <- function(x) g_eval(lam3$lam_plus,  x, anc3$plus)
-
-  gp1m <- function(x) gp_eval(lam1$lam_minus, x, anc1$minus)
-  gp1p <- function(x) gp_eval(lam1$lam_plus,  x, anc1$plus)
-  gp2m <- function(x) gp_eval(lam2$lam_minus, x, anc2$minus)
-  gp2p <- function(x) gp_eval(lam2$lam_plus,  x, anc2$plus)
-  gp3m <- function(x) gp_eval(lam3$lam_minus, x, anc3$minus)
-  gp3p <- function(x) gp_eval(lam3$lam_plus,  x, anc3$plus)
+  # Convenience closures for anchored exponentials
+  g1m  <- function(x) g_eval (lam1$lam_minus, x, anc1$minus);  gp1m <- function(x) gp_eval(lam1$lam_minus, x, anc1$minus)
+  g1p  <- function(x) g_eval (lam1$lam_plus , x, anc1$plus );  gp1p <- function(x) gp_eval(lam1$lam_plus , x, anc1$plus )
+  g2m  <- function(x) g_eval (lam2$lam_minus, x, anc2$minus);  gp2m <- function(x) gp_eval(lam2$lam_minus, x, anc2$minus)
+  g2p  <- function(x) g_eval (lam2$lam_plus , x, anc2$plus );  gp2p <- function(x) gp_eval(lam2$lam_plus , x, anc2$plus )
+  g3m  <- function(x) g_eval (lam3$lam_minus, x, anc3$minus);  gp3m <- function(x) gp_eval(lam3$lam_minus, x, anc3$minus)
+  g3p  <- function(x) g_eval (lam3$lam_plus , x, anc3$plus );  gp3p <- function(x) gp_eval(lam3$lam_plus , x, anc3$plus )
   
-  # ------------------------ Region 1: solve u1 coefficients ----------------------
+  # ------------------------ Region 1: solve u1^± (stable Eq. (47)) ----------------
   u <- p$u; mu <- p$mu; sigma2 <- p$sigma^2; a11 <- a1c$a1
   
-  # Lower reflection and H(xk)=0 determine the two homogeneous coefficients.
+  # m rows follow §5.2.2 with derivative term evaluated at xL in both equations
   m11m <- g1m(xL) + (mu/a11)*(sigma2/2)*gp1m(xL)
   m11p <- g1p(xL) + (mu/a11)*(sigma2/2)*gp1p(xL)
   m12m <- g1m(xk) + (mu/a11)*(sigma2/2)*gp1m(xL)
@@ -298,32 +223,66 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
   M1_raw <- rbind(c(m11m, m11p), c(m12m, m12p))
   b1_raw <- c(b11, b12)
   
-  sol1 <- solve_scaled_2x2(M1_raw, b1_raw, tag = "Region 1", scale_thresh = kappa3_scale_thresh)
-  M1 <- sol1$M
-  s1 <- sol1$x
+  # Condition number before scaling (to decide whether to scale)
+  k1_raw <- tryCatch(kappa(M1_raw), error = function(e) Inf)
+  
+  if (is.finite(k1_raw) && k1_raw > kappa3_scale_thresh) {
+    # Simple and effective: row scaling by row norms (or max-abs)
+    s1r <- max(1, sqrt(sum(M1_raw[1,]^2)))  # guard with max(1, ·) to avoid over-scaling tiny rows
+    s2r <- max(1, sqrt(sum(M1_raw[2,]^2)))
+    M1  <- rbind(M1_raw[1,] / s1r, M1_raw[2,] / s2r)
+    b1  <- c(b1_raw[1] / s1r, b1_raw[2] / s2r)
+    s1  <- solve_2x2_LU(M1, b1, tag = "Region 1 (u1±) [row-scaled]")
+  } else {
+    M1  <- M1_raw
+    b1  <- b1_raw
+    s1  <- solve_2x2_LU(M1, b1, tag = "Region 1 (u1±)")
+  }
   
   u1m <- s1[1]; u1p <- s1[2]
   
-  # Ergodic value gamma implied by the lower reflecting boundary.
+  # γ from (46) using anchored H1′ at xL
   gamma <- gamma_from_xL_stable(xL, anc1$minus, anc1$plus, u1m, u1p, lam1, q1c, p)
   
-  # ------------------------ Region 2: solve u2 coefficients ----------------------
+  # ------------------------ Region 2: solve u2^± ----------------
   if (!regime2) {
-    # Regime 1: x^lambda lies inside the continuation band.
+    # ===== Regime 1 (xl <= xU): your original IH(xλ)=0 system =====
     
-    # Row 1: H-continuity at xk.
+    # Row 1: H-continuity at xκ
     m21m <- g2m(xk)
     m21p <- g2p(xk)
     b21  <- -(mu/a2c$a1)*gamma - q_eval(q2c, xk)
     
-    # Row 2: IH(xl)=0, using the anchored convolution in Section 5.1.
+    # Row 2: IH(xλ)=0 (anchored, stable form, Eq. (49))
     m22m <- mu * exp(-lam2$lam_minus * (xl - anc2$minus)) * phi_1mexp(mu - lam2$lam_minus, (xl - xk))
     m22p <- mu * exp(-lam2$lam_plus  * (xl - anc2$plus )) * phi_1mexp(mu - lam2$lam_plus , (xl - xk))
     
-    # RHS: Region 1 homogeneous contribution plus polynomial terms.
-    term_c1 <-
-      anchored_exp_integral(lam1$lam_minus, u1m, anc1$minus, xL, xk, xl, mu) +
-      anchored_exp_integral(lam1$lam_plus,  u1p, anc1$plus,  xL, xk, xl, mu)
+    # RHS β(2)_2: region 1 homogeneous + polynomials (anchored per root)
+    if (abs(mu - lam1$lam_minus) < 10^-6) {
+      term_c1_minus <-
+        mu * u1m * exp(-mu*(xl - xk)) * exp(-lam1$lam_minus*(xk - anc1$minus)) *
+        phi_1mexp(mu - lam1$lam_minus, (xk - xL))
+    } else {
+      term_c1_minus <-
+        mu * u1m * (
+          exp(-mu*(xl - xk)) * exp(-lam1$lam_minus*(xk - anc1$minus)) -
+            exp(-mu*(xl - xL)) * exp(-lam1$lam_minus*(xL - anc1$minus))
+        ) / (mu - lam1$lam_minus)
+    }
+    
+    if (abs(mu - lam1$lam_plus) < 10^-6) {
+      term_c1_plus <-
+        mu * u1p * exp(-mu*(xl - xk)) * exp(-lam1$lam_plus*(xk - anc1$plus)) *
+        phi_1mexp(mu - lam1$lam_plus, (xk - xL))
+    } else {
+      term_c1_plus <-
+        mu * u1p * (
+          exp(-mu*(xl - xk)) * exp(-lam1$lam_plus*(xk - anc1$plus)) -
+            exp(-mu*(xl - xL)) * exp(-lam1$lam_plus*(xL - anc1$plus))
+        ) / (mu - lam1$lam_plus)
+    }
+    
+    term_c1 <- term_c1_minus + term_c1_plus
     
     Q1_xk <- Q_poly(xk, q1c, a1c$a1, gamma, mu)
     Q1_xL <- Q_poly(xL, q1c, a1c$a1, gamma, mu)
@@ -336,21 +295,30 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
     M2_raw <- rbind(c(m21m, m21p), c(m22m, m22p))
     b2_raw <- c(b21, b22)
     
-    sol2 <- solve_scaled_2x2(M2_raw, b2_raw, tag = "Region 2", scale_thresh = kappa3_scale_thresh)
-    M2 <- sol2$M
-    s2 <- sol2$x
+    k2_raw <- tryCatch(kappa(M2_raw), error = function(e) Inf)
+    if (is.finite(k2_raw) && k2_raw > kappa3_scale_thresh) {
+      s1r <- max(1, sqrt(sum(M2_raw[1,]^2)))
+      s2r <- max(1, sqrt(sum(M2_raw[2,]^2)))
+      M2  <- rbind(M2_raw[1,] / s1r, M2_raw[2,] / s2r)
+      b2  <- c(b2_raw[1] / s1r, b2_raw[2] / s2r)
+      s2  <- solve_2x2_LU(M2, b2, tag = "Region 2 (u2±) [row-scaled]")
+    } else {
+      M2 <- M2_raw
+      b2 <- b2_raw
+      s2 <- solve_2x2_LU(M2, b2, tag = "Region 2 (u2±)")
+    }
     
     u2m <- s2[1]; u2p <- s2[2]
     
   } else {
-    # Regime 2: x^lambda is above xU, so Region 3 is outside the band.
+    # ===== Regime 2 (xl > xU): NO region 3 inside the band. Solve u2± by H2(xk)=0 and H2(xU)=l =====
     
     # Row 1: H2(xk)=0
     m21m <- g2m(xk)
     m21p <- g2p(xk)
     b21  <- -(mu/a2c$a1)*gamma - q_eval(q2c, xk)
     
-    # Row 2: H2(xU)=l because H is constant above the upper barrier.
+    # Row 2: H2(xU)=l  (since H is constant = l for x>=xU)
     m22m <- g2m(xU)
     m22p <- g2p(xU)
     b22  <- p$l - (mu/a2c$a1)*gamma - q_eval(q2c, xU)
@@ -358,22 +326,33 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
     M2_raw <- rbind(c(m21m, m21p), c(m22m, m22p))
     b2_raw <- c(b21, b22)
     
-    sol2 <- solve_scaled_2x2(M2_raw, b2_raw, tag = "Region 2 (Regime 2)", scale_thresh = kappa3_scale_thresh)
-    M2 <- sol2$M
-    s2 <- sol2$x
+    k2_raw <- tryCatch(kappa(M2_raw), error = function(e) Inf)
+    if (is.finite(k2_raw) && k2_raw > kappa3_scale_thresh) {
+      s1r <- max(1, sqrt(sum(M2_raw[1,]^2)))
+      s2r <- max(1, sqrt(sum(M2_raw[2,]^2)))
+      M2  <- rbind(M2_raw[1,] / s1r, M2_raw[2,] / s2r)
+      b2  <- c(b2_raw[1] / s1r, b2_raw[2] / s2r)
+      s2  <- solve_2x2_LU(M2, b2, tag = "Region 2 (u2±) [Regime 2, row-scaled]")
+    } else {
+      M2 <- M2_raw
+      b2 <- b2_raw
+      s2 <- solve_2x2_LU(M2, b2, tag = "Region 2 (u2±) [Regime 2]")
+    }
     
     u2m <- s2[1]; u2p <- s2[2]
   }
   
   
-  # ------------------------ Region 3: solve u3 coefficients ----------------------
+  # ------------------------ Region 3: solve u3^± -------------------
   if (!regime2) {
+    # (your original Region 3 block stays EXACTLY the same)
+    
     # Row 1: H3(xU) = l
     m31m <- g3m(xU)
     m31p <- g3p(xU)
     b31  <- p$l - (mu/a3c$a1)*gamma - q_eval(q3c, xU)
     
-    # Row 2: continuity at xl.
+    # Row 2: continuity at xλ (use anchors xa3 for region 3, xa2 for region 2)
     m32m <- g3m(xl)
     m32p <- g3p(xl)
     b32  <- u2m * g2m(xl) + u2p * g2p(xl) +
@@ -382,14 +361,28 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
     M3_raw <- rbind(c(m31m, m31p), c(m32m, m32p))
     b3_raw <- c(b31, b32)
     
-    sol3 <- solve_scaled_2x2(M3_raw, b3_raw, tag = "Region 3", scale_thresh = kappa3_scale_thresh)
-    M3 <- sol3$M
-    s3 <- sol3$x
+    # Condition number before scaling (to decide whether to scale)
+    k3_raw <- tryCatch(kappa(M3_raw), error = function(e) Inf)
+    
+    if (is.finite(k3_raw) && k3_raw > kappa3_scale_thresh) {
+      # Simple and effective: row scaling by row norms (or max-abs)
+      s1 <- max(1, sqrt(sum(M3_raw[1,]^2)))  # guard with max(1, ·) to avoid over-scaling tiny rows
+      s2 <- max(1, sqrt(sum(M3_raw[2,]^2)))
+      M3  <- rbind(M3_raw[1,] / s1, M3_raw[2,] / s2)
+      b3  <- c(b3_raw[1] / s1, b3_raw[2] / s2)
+      s3  <- solve_2x2_LU(M3, b3, tag = "Region 3 (u3±) [row-scaled]")
+      scaled_row_factors <- c(s1, s2)
+    } else {
+      M3  <- M3_raw
+      b3  <- b3_raw
+      s3  <- solve_2x2_LU(M3, b3, tag = "Region 3 (u3±)")
+      scaled_row_factors <- c(1, 1)
+    }
     
     u3m <- s3[1]; u3p <- s3[2]
   
   } else {
-    # Return placeholders so downstream code can keep the same list shape.
+    # Regime 2: no Region 3 inside [xL, xU]. We keep placeholders for compatibility.
     u3m <- 0; u3p <- 0
     M3  <- matrix(NA_real_, 2, 2)
   }
@@ -457,9 +450,10 @@ build_suboptimal_H <- function(p, xL, xk, xl, xU,
   )
 }
 
-# -------------------------- Intensity threshold residual -------------------------
-# Evaluates IH(xl). In Regime 2, xl is beyond xU, so the convolution includes
-# the constant tail H=l over [xU, xl].
+# ------------------------ IH(xλ) residual (stable, eq. (49)) --------------------
+# ------------------------ IH(xλ) residual (stable, generalized) ----------------
+# NEW: works both when xλ<=xU (Regime 1) and when xλ>xU (Regime 2).
+# In Regime 2, it correctly adds the constant-tail contribution from [xU, xλ].
 IH_at_xlambda_stable <- function(sol, xla = NULL) {
   if (is.null(xla)) xla <- sol$x$xl
   
@@ -468,7 +462,7 @@ IH_at_xlambda_stable <- function(sol, xla = NULL) {
   xs <- sol$x
   xL <- xs$xL; xk <- xs$xk; xU <- xs$xU
   
-  # Last point inside the continuation band.
+  # last point that is inside the band (integration upper limit for the interior pieces)
   B <- min(xla, xU)
   
   R1 <- sol$pieces$region1
@@ -483,14 +477,42 @@ IH_at_xlambda_stable <- function(sol, xla = NULL) {
   u2m <- R2$u_minus; u2p <- R2$u_plus
   gamma <- sol$gamma
   
-  # Homogeneous contributions from Regions 1 and 2.
-  term_c1 <-
-    anchored_exp_integral(lam1$lam_minus, u1m, xa1m, xL, xk, xla, mu) +
-    anchored_exp_integral(lam1$lam_plus,  u1p, xa1p, xL, xk, xla, mu)
+  # ----- Region 1 homogeneous contribution over [xL, xk], evaluated at xla -----
+  if (abs(mu - lam1$lam_minus) < 1e-6) {
+    term_c1_minus <-
+      mu * u1m * exp(-mu*(xla - xk)) * exp(-lam1$lam_minus*(xk - xa1m)) *
+      phi_1mexp(mu - lam1$lam_minus, (xk - xL))
+  } else {
+    term_c1_minus <-
+      mu * u1m * (
+        exp(-mu*(xla - xk)) * exp(-lam1$lam_minus*(xk - xa1m)) -
+          exp(-mu*(xla - xL)) * exp(-lam1$lam_minus*(xL - xa1m))
+      ) / (mu - lam1$lam_minus)
+  }
+  
+  if (abs(mu - lam1$lam_plus) < 1e-6) {
+    term_c1_plus <-
+      mu * u1p * exp(-mu*(xla - xk)) * exp(-lam1$lam_plus*(xk - xa1p)) *
+      phi_1mexp(mu - lam1$lam_plus, (xk - xL))
+  } else {
+    term_c1_plus <-
+      mu * u1p * (
+        exp(-mu*(xla - xk)) * exp(-lam1$lam_plus*(xk - xa1p)) -
+          exp(-mu*(xla - xL)) * exp(-lam1$lam_plus*(xL - xa1p))
+      ) / (mu - lam1$lam_plus)
+  }
+  
+  term_c1 <- term_c1_minus + term_c1_plus
+  
+  # ----- Region 2 homogeneous contribution over [xk, B], evaluated at xla -----
+  # NOTE: extra factor exp(-mu*(xla-B)) appears if xla>B (i.e. Regime 2)
+  shift_B <- exp(-mu * (xla - B))
   
   term_c2 <-
-    anchored_exp_integral(lam2$lam_minus, u2m, xa2m, xk, B, xla, mu) +
-    anchored_exp_integral(lam2$lam_plus,  u2p, xa2p, xk, B, xla, mu)
+    shift_B * (
+      mu * u2m * exp(-lam2$lam_minus*(B - xa2m)) * phi_1mexp(mu - lam2$lam_minus, (B - xk)) +
+        mu * u2p * exp(-lam2$lam_plus *(B - xa2p)) * phi_1mexp(mu - lam2$lam_plus , (B - xk))
+    )
   
   # ----- Polynomial contributions over [xL, xk] and [xk, B] -----
   Q1_xk <- Q_poly(xk, q1c, a1c$a1, gamma, mu)
@@ -502,10 +524,10 @@ IH_at_xlambda_stable <- function(sol, xla = NULL) {
     mu * exp(-mu*xla) *
     (exp(mu*xk)*Q1_xk - exp(mu*xL)*Q1_xL + exp(mu*B)*Q2_B - exp(mu*xk)*Q2_xk)
   
-  # Constant tail when xla > xU: contribution from [xU, xla] where H=l.
+  # ----- Constant tail when xla > xU: contribution from [xU, xla] where H=l -----
   tail <- if (xla > xU) p$l * (1 - exp(mu*(xU - xla))) else 0
   
-  # Full residual: zero at the true intensity threshold.
+  # ----- Full residual (should be 0 at the true xλ) -----
   -p$u * exp(mu*(xL - xla)) + term_c1 + term_c2 + term_poly + tail
 }
 
@@ -516,39 +538,43 @@ diagnose <- function(sol, tol=1e-8) {
   R1 <- sol$pieces$region1; R2 <- sol$pieces$region2; R3 <- sol$pieces$region3
   gamma <- sol$gamma
   
-  regime2 <- isTRUE(sol$regime2) || isTRUE(xl > xU) || all(is.na(R3$M))
-
-  H1_fun <- function(x) region_value(R1, x, gamma)
-  H2_fun <- function(x) region_value(R2, x, gamma)
-  H3_fun <- if (regime2) function(x) rep(p$l, length(x)) else function(x) region_value(R3, x, gamma)
-
-  H1p_at <- function(x) region_slope(R1, x)
-  H2p_at <- function(x) region_slope(R2, x)
-  H3p_at <- if (regime2) function(x) rep(0, length(x)) else function(x) region_slope(R3, x)
+  # Closures with PER-ROOT anchors
+  g  <- function(lambda, x, xa)  exp(-lambda * (x - xa))
+  gp <- function(lambda, x, xa) -lambda * exp(-lambda * (x - xa))
+  
+  H1_fun <- function(x) R1$u_minus*g(R1$lam$lam_minus,x,R1$anchor_minus) + R1$u_plus*g(R1$lam$lam_plus,x,R1$anchor_plus) +
+    q_eval(R1$q, x) + R1$q$gamma_fac*gamma
+  H2_fun <- function(x) R2$u_minus*g(R2$lam$lam_minus,x,R2$anchor_minus) + R2$u_plus*g(R2$lam$lam_plus,x,R2$anchor_plus) +
+    q_eval(R2$q, x) + R2$q$gamma_fac*gamma
+  H3_fun <- function(x) R3$u_minus*g(R3$lam$lam_minus,x,R3$anchor_minus) + R3$u_plus*g(R3$lam$lam_plus,x,R3$anchor_plus) +
+    q_eval(R3$q, x) + R3$q$gamma_fac*gamma
+  
+  H1p_at <- function(x) gp(R1$lam$lam_minus,x,R1$anchor_minus)*R1$u_minus + gp(R1$lam$lam_plus,x,R1$anchor_plus)*R1$u_plus + qprime_eval(R1$q, x)
+  H2p_at <- function(x) gp(R2$lam$lam_minus,x,R2$anchor_minus)*R2$u_minus + gp(R2$lam$lam_plus,x,R2$anchor_plus)*R2$u_plus + qprime_eval(R2$q, x)
+  H3p_at <- function(x) gp(R3$lam$lam_minus,x,R3$anchor_minus)*R3$u_minus + gp(R3$lam$lam_plus,x,R3$anchor_plus)*R3$u_plus + qprime_eval(R3$q, x)
   
   cont_xL <- H1_fun(xL) + p$u
   cont_xk <- H1_fun(xk) - H2_fun(xk)
-  cont_xl <- if (regime2) NA_real_ else H2_fun(xl) - H3_fun(xl)
-  cont_xU <- if (regime2) H2_fun(xU) - p$l else H3_fun(xU) - p$l
+  cont_xl <- H2_fun(xl) - H3_fun(xl)
+  cont_xU <- H3_fun(xU) - p$l
   
-  root_k <- H1_fun(xk)
-  IH_xl  <- IH_at_xlambda_stable(sol)
+  root_k <- H1_fun(xk)               # H(xκ)=0
+  IH_xl  <- IH_at_xlambda_stable(sol) # IH(xλ)=0
   
   dcont_xL <- H1p_at(xL) - 0
   dcont_xk <- H2p_at(xk) - H1p_at(xk)
-  dcont_xl <- if (regime2) NA_real_ else H3p_at(xl) - H2p_at(xl)
-  dcont_xU <- if (regime2) 0 - H2p_at(xU) else 0 - H3p_at(xU)
-  
-  values <- c(cont_xL, cont_xk, cont_xl, cont_xU, root_k, IH_xl,
-              dcont_xL, dcont_xk, dcont_xl, dcont_xU)
+  dcont_xl <- H3p_at(xl) - H2p_at(xl)
+  dcont_xU <- 0 - H3p_at(xU)
   
   checks <- data.frame(
     check = c("continuity@xL", "continuity@xk", "continuity@xl", "continuity@xU",
               "H(xk)=0", "IH(xl)=0",
               "H'(jump)@xL", "H'(jump)@xk", "H'(jump)@xl", "H'(jump)@xU"),
-    value = values,
+    value = c(cont_xL, cont_xk, cont_xl, cont_xU, root_k, IH_xl,
+              dcont_xL, dcont_xk, dcont_xl, dcont_xU),
     type  = c(rep("continuity", 4), rep("ambiguity_condition", 2), rep("derivative_jump", 4)),
-    pass  = ifelse(is.na(values), NA, abs(values) <= tol)
+    pass  = abs(c(cont_xL, cont_xk, cont_xl, cont_xU, root_k, IH_xl,
+                  dcont_xL, dcont_xk, dcont_xl, dcont_xU)) <= tol
   )
   rownames(checks) <- NULL
   
@@ -563,8 +589,7 @@ diagnose <- function(sol, tol=1e-8) {
 }
 
 # =========================== Optimal barriers (stable) ===========================
-# Log-gap parameterization: keeps xL < xk, xk < xl, and xk < xU while
-# still allowing xl to lie above xU in Regime 2.
+# NEW: allow xl and xU to be on either side, as long as both are > xk.
 z_from_x <- function(xL, xk, xl, xU) {
   stopifnot(xL < xk, xk < xl, xk < xU)
   c(
@@ -588,31 +613,36 @@ x_from_z <- function(z) {
 }
 
 
-# Four residuals solved by the outer root search. In Regime 1 these are the
-# smooth-fit conditions at xL, xU, xk, and xl; in Regime 2 the last condition
-# is IH(xl)=0 because xl lies outside the reflecting band.
+# Residuals of optimality equations with Regime-2 support (xl may exceed xU)
 opt_conditions_residuals <- function(
     z, p, tol_build=1e-10, tol_regime_switch = 1e-3,
     return_sol = FALSE,
-    recorder = NULL
+    recorder = NULL               # <-- NEW
 ) {
   xs  <- x_from_z(z)
   sol <- build_suboptimal_H(
     p,
     as.numeric(xs["xL"]), as.numeric(xs["xk"]),
     as.numeric(xs["xl"]), as.numeric(xs["xU"]),
-    tol_gap = tol_build,
     tol_regime_switch = tol_regime_switch
   )
   
   xL <- xs["xL"]; xk <- xs["xk"]; xl <- xs["xl"]; xU <- xs["xU"]
   R1 <- sol$pieces$region1; R2 <- sol$pieces$region2
-  H1p <- function(x) region_slope(R1, x)
-  H2p <- function(x) region_slope(R2, x)
+  
+  H1p <- function(x) gp_eval(R1$lam$lam_minus,x,R1$anchor_minus)*R1$u_minus +
+    gp_eval(R1$lam$lam_plus ,x,R1$anchor_plus )*R1$u_plus  +
+    qprime_eval(R1$q, x)
+  
+  H2p <- function(x) gp_eval(R2$lam$lam_minus,x,R2$anchor_minus)*R2$u_minus +
+    gp_eval(R2$lam$lam_plus ,x,R2$anchor_plus )*R2$u_plus  +
+    qprime_eval(R2$q, x)
   
   if (!isTRUE(sol$regime2)) {
     R3 <- sol$pieces$region3
-    H3p <- function(x) region_slope(R3, x)
+    H3p <- function(x) gp_eval(R3$lam$lam_minus,x,R3$anchor_minus)*R3$u_minus +
+      gp_eval(R3$lam$lam_plus ,x,R3$anchor_plus )*R3$u_plus  +
+      qprime_eval(R3$q, x)
     
     r <- c(
       H1p(xL),
@@ -629,8 +659,9 @@ opt_conditions_residuals <- function(
     )
   }
   
+  # ---------- NEW: record here (side-effect), sol is guaranteed available ----------
   if (is.function(recorder)) {
-    # Recording is diagnostic only; it should never crash the root solver.
+    # never let recording crash the solver
     try(recorder(z, r, sol), silent = TRUE)
   }
   
@@ -638,11 +669,10 @@ opt_conditions_residuals <- function(
   r
 }
 
-# ------------------------ Outer solver: Broyden then Newton ----------------------
+# ------------------------ Outer solver: Broyden → Newton ------------------------
 # Switch to a pure Newton method (with FD Jacobian) when close to a solution.
 # Nearness is detected by max|f| <= switch_ftol (and after at least switch_iter_min iterations).
-# Uses the stable inner builder from Section 5.1 and the two-stage search in
-# Algorithm 1.
+# Uses the stable inner builder from Secs. 5.1–5.3.
 
 solve_optimal_barriers <- function(
     p, xL0, xk0, xl0, xU0,
@@ -668,30 +698,52 @@ solve_optimal_barriers <- function(
   # ---- reparam z <-> x (keeps barriers ordered) ----
   z0 <- z_from_x(xL0, xk0, xl0, xU0)
   
-  # Optional iteration history for convergence plots.
+  # -------------------- iterate recorder (NEW) --------------------
   rec_env <- new.env(parent = emptyenv())
   rec_env$hist <- list()
   rec_env$last_z <- NULL
   rec_env$record_on <- TRUE
   rec_env$stage <- "broyden"
   
+  # .c1_jumps_from_sol <- function(sol) {
+  #   xs <- sol$x
+  #   xL <- xs$xL; xk <- xs$xk; xl <- xs$xl; xU <- xs$xU
+  #   
+  #   # epsilon chosen relative to smallest gap
+  #   gaps <- c(xk - xL, xl - xk, xU - min(xl, xU))
+  #   gmin <- max(1e-8, min(gaps[gaps > 0], na.rm=TRUE))
+  #   eps  <- min(1e-6 * (1 + max(abs(c(xL,xk,xl,xU)))), 0.25*gmin)
+  #   
+  #   Hp <- sol$Hp
+  #   c(
+  #     Hp_xL  = as.numeric(Hp(xL + eps)),
+  #     dHp_xk = as.numeric(Hp(xk - eps) - Hp(xk + eps)),
+  #     dHp_xl = as.numeric(Hp(xl - eps) - Hp(xl + eps)),
+  #     Hp_xU  = as.numeric(Hp(xU - eps))
+  #   )
+  # }
+  
   .record_step <- function(z, r, sol) {
     if (!isTRUE(record_iterates)) return(invisible())
     
-    znum <- c(unname(as.double(z)))
+    # FORCE a copy (do NOT use as.numeric(z) alone)
+    znum <- c(unname(as.double(z)))   # c(...) forces a new vector
     
     if (!is.null(rec_env$last_z)) {
       dz <- suppressWarnings(max(abs(znum - rec_env$last_z)))
       if (is.finite(dz) && dz <= record_xtol) return(invisible())
     }
     
-    rec_env$last_z <- znum
+    rec_env$last_z <- znum   # already a fresh copy
     
-    # Store the residuals that define fmax. In Regime 2, dHp_xl is IH(xl).
+    # old
+    # jumps <- .c1_jumps_from_sol(sol)
+    
+    # new: store the true residuals that define fmax
     jumps <- c(
       Hp_xL  = as.numeric(r[1]),
       dHp_xk = as.numeric(r[3]),
-      dHp_xl = as.numeric(r[4]),
+      dHp_xl = as.numeric(r[4]),  # note: in regime2 this is NOT a derivative jump
       Hp_xU  = as.numeric(r[2])
     )
     
@@ -711,7 +763,7 @@ solve_optimal_barriers <- function(
     invisible()
   }
   
-  # Residuals of the finite-dimensional free-boundary system.
+  # Residuals (Eqs. (52)–(55) in stable form)
   .fn_eval <- function(z, do_record = TRUE) {
     
     rec_cb <- if (isTRUE(record_iterates) && isTRUE(do_record)) {
@@ -724,8 +776,8 @@ solve_optimal_barriers <- function(
       z, p,
       tol_build = tol_build,
       tol_regime_switch = tol_regime_switch,
-      return_sol = FALSE,
-      recorder = rec_cb
+      return_sol = FALSE,         # <-- no longer needed
+      recorder = rec_cb           # <-- key change
     )
     
     r_num <- as.numeric(r)
@@ -743,7 +795,20 @@ solve_optimal_barriers <- function(
   fn       <- function(z) .fn_eval(z, do_record = TRUE)
   fn_norec <- function(z) .fn_eval(z, do_record = FALSE)
   
-  jac_fd <- function(z, fz = NULL) fd_jacobian(z, fn_norec, fd_step, fz)
+  # Stable, central-difference Jacobian (O(h^2))
+  jac_fd <- function(z, fz = NULL) {
+    n <- length(z); J <- matrix(0.0, n, n)
+    if (is.null(fz)) fz <- fn_norec(z)
+    
+    for (j in 1:n) {
+      h <- fd_step * (1 + abs(z[j]))
+      zp <- z; zm <- z
+      zp[j] <- z[j] + h;  zm[j] <- z[j] - h
+      fp <- fn_norec(zp); fm <- fn_norec(zm)
+      J[, j] <- (fp - fm) / (2*h)
+    }
+    J
+  }
   
   # -------------------- Phase 1: robust Broyden --------------------
   ans_broyden <- nleqslv::nleqslv(
@@ -763,7 +828,6 @@ solve_optimal_barriers <- function(
       p,
       as.numeric(xs_end["xL"]), as.numeric(xs_end["xk"]),
       as.numeric(xs_end["xl"]), as.numeric(xs_end["xU"]),
-      tol_gap = tol_build,
       tol_regime_switch = tol_regime_switch
     )
     .record_step(z_end, as.numeric(ans_broyden$fvec), sol_end)
@@ -812,7 +876,6 @@ solve_optimal_barriers <- function(
   xs_hat <- x_from_z(final_ans$x)
   sol_subopt <- build_suboptimal_H(
     p, xs_hat[["xL"]], xs_hat[["xk"]], xs_hat[["xl"]], xs_hat[["xU"]],
-    tol_gap = tol_build,
     tol_regime_switch = tol_regime_switch
   )
   
@@ -856,7 +919,6 @@ solve_optimal_barriers <- function(
     H      = sol_subopt$H,
     Hp     = sol_subopt$Hp,
     gamma  = sol_subopt$gamma,
-    regime2 = sol_subopt$regime2,
     pieces = sol_subopt$pieces,
     params = sol_subopt$params,
     x      = sol_subopt$x,
@@ -896,7 +958,6 @@ ambiguity_threshold_residuals_fixed_barriers <- function(
   xs  <- x_from_z_fixed_barriers(z, xL, xU)
   sol <- build_suboptimal_H(
     p, xs["xL"], xs["xk"], xs["xl"], xs["xU"],
-    tol_gap = tol_build,
     tol_regime_switch = tol_regime_switch
   )
 
@@ -904,14 +965,21 @@ ambiguity_threshold_residuals_fixed_barriers <- function(
   R1 <- sol$pieces$region1
   R2 <- sol$pieces$region2
 
-  H1p <- function(x) region_slope(R1, x)
-  H2p <- function(x) region_slope(R2, x)
+  H1p <- function(x) gp_eval(R1$lam$lam_minus, x, R1$anchor_minus) * R1$u_minus +
+    gp_eval(R1$lam$lam_plus , x, R1$anchor_plus ) * R1$u_plus  +
+    qprime_eval(R1$q, x)
+
+  H2p <- function(x) gp_eval(R2$lam$lam_minus, x, R2$anchor_minus) * R2$u_minus +
+    gp_eval(R2$lam$lam_plus , x, R2$anchor_plus ) * R2$u_plus  +
+    qprime_eval(R2$q, x)
 
   r1 <- H1p(xk) - H2p(xk)
 
   if (!isTRUE(sol$regime2)) {
     R3 <- sol$pieces$region3
-    H3p <- function(x) region_slope(R3, x)
+    H3p <- function(x) gp_eval(R3$lam$lam_minus, x, R3$anchor_minus) * R3$u_minus +
+      gp_eval(R3$lam$lam_plus , x, R3$anchor_plus ) * R3$u_plus  +
+      qprime_eval(R3$q, x)
 
     r2 <- H2p(xl) - H3p(xl)
   } else {
@@ -959,7 +1027,18 @@ solve_ambiguity_thresholds_fixed_barriers <- function(
     r
   }
 
-  jac_fd <- function(z, fz = NULL) fd_jacobian(z, fn, fd_step, fz)
+  jac_fd <- function(z, fz = NULL) {
+    n <- length(z); J <- matrix(0.0, n, n)
+    if (is.null(fz)) fz <- fn(z)
+    for (j in 1:n) {
+      h <- fd_step * (1 + abs(z[j]))
+      zp <- z; zm <- z
+      zp[j] <- z[j] + h;  zm[j] <- z[j] - h
+      fp <- fn(zp);       fm <- fn(zm)
+      J[, j] <- (fp - fm) / (2*h)
+    }
+    J
+  }
 
   ans_broyden <- nleqslv::nleqslv(
     x = z0, fn = fn, method = method,
@@ -1002,7 +1081,6 @@ solve_ambiguity_thresholds_fixed_barriers <- function(
   xs_hat <- x_from_z_fixed_barriers(final_ans$x, xL, xU)
   sol_subopt <- build_suboptimal_H(
     p, xs_hat[["xL"]], xs_hat[["xk"]], xs_hat[["xl"]], xs_hat[["xU"]],
-    tol_gap = tol_build,
     tol_regime_switch = tol_regime_switch
   )
 
@@ -1010,7 +1088,6 @@ solve_ambiguity_thresholds_fixed_barriers <- function(
     H      = sol_subopt$H,
     Hp     = sol_subopt$Hp,
     gamma  = sol_subopt$gamma,
-    regime2 = sol_subopt$regime2,
     pieces = sol_subopt$pieces,
     params = sol_subopt$params,
     x      = sol_subopt$x,
