@@ -214,8 +214,8 @@ Arguments:
   device.
 - `use_cairo_pdf`: prefer `cairo_pdf()` when available.
 
-This helper is intentionally public because `experiments.R` also uses it for
-custom plots.
+This helper is intentionally public because the modules under `src/experiments/`
+also use it for custom plots.
 
 ## Internal Helpers
 

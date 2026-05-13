@@ -20,7 +20,9 @@ repo_root <- normalizePath(
 source(file.path(repo_root, "src", "solver.R"), chdir = TRUE)
 source(file.path(repo_root, "src", "simulation.R"), chdir = TRUE)
 source(file.path(repo_root, "src", "plotting.R"), chdir = TRUE)
-source(file.path(repo_root, "src", "experiments.R"), chdir = TRUE)
+source(file.path(repo_root, "src", "experiments", "sweeps.R"), chdir = TRUE)
+source(file.path(repo_root, "src", "experiments", "misspecification.R"), chdir = TRUE)
+source(file.path(repo_root, "src", "experiments", "misspecification_plotting.R"), chdir = TRUE)
 source(file.path(repo_root, "src", "animations.R"), chdir = TRUE)
 
 invisible(repo_root)
