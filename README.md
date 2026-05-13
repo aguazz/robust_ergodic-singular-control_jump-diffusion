@@ -79,8 +79,9 @@ The smoke check currently verifies the baseline solution
 `xU = 0.7511408`, and `gamma = 2.48011711465`.
 
 For compact guides to the main APIs, see
-[`docs/solver-reference.md`](docs/solver-reference.md) and
-[`docs/simulation-reference.md`](docs/simulation-reference.md).
+[`docs/solver-reference.md`](docs/solver-reference.md),
+[`docs/simulation-reference.md`](docs/simulation-reference.md), and
+[`docs/plotting-reference.md`](docs/plotting-reference.md).
 
 ## Reproducing outputs
 
