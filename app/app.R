@@ -26,6 +26,7 @@ if (length(missing_packages)) {
 app_dir <- dirname(.app_file_path())
 app_repo_root <- normalizePath(file.path(app_dir, ".."), winslash = "/", mustWork = TRUE)
 setwd(app_repo_root)
+shiny::addResourcePath("app-www", file.path(app_dir, "www"))
 
 source(file.path(app_repo_root, "src", "load.R"), chdir = TRUE)
 source(file.path(app_repo_root, "src", "app", "validation.R"), chdir = TRUE)
@@ -214,7 +215,7 @@ ui <- bslib::page_sidebar(
   fillable = FALSE,
   shiny::withMathJax(),
   shiny::tags$head(
-    shiny::tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    shiny::tags$link(rel = "stylesheet", type = "text/css", href = "app-www/styles.css"),
     shiny::tags$script(shiny::HTML(
       "
       document.addEventListener('DOMContentLoaded', function() {
