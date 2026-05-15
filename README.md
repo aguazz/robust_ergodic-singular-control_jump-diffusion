@@ -38,8 +38,9 @@ run/
 figures/       Existing generated figures and cached grids.
 frames/        Generated animation frames.
 docs/          Lightweight function references and notes.
-legacy/        Backup copy of the original monolithic scripts.
 app/           Shiny companion app.
+app.R          Top-level Shiny app entry point.
+legacy/        Historical split source files kept for reference.
 ```
 
 ## Requirements
@@ -57,11 +58,11 @@ install.packages(c("nleqslv", "shiny", "bslib"))
 
 From the repository root:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\smoke.R
+```sh
+Rscript run/smoke.R
 ```
 
-or, inside R:
+or work directly inside R:
 
 ```r
 source(file.path("src", "load.R"))
@@ -89,8 +90,8 @@ The smoke check currently verifies the baseline solution
 
 Launch the interactive app from the repository root with:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\launch_app.R
+```sh
+Rscript run/launch_app.R
 ```
 
 The app lets users choose model parameters, solve the free-boundary problem,
@@ -110,20 +111,20 @@ for animation-frame helpers.
 
 Static figures:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\reproduce_figures.R
+```sh
+Rscript run/reproduce_figures.R
 ```
 
 Misspecification figures and tables:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\reproduce_misspecification.R
+```sh
+Rscript run/reproduce_misspecification.R
 ```
 
 Full parameter sweeps:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\reproduce_sweeps.R
+```sh
+Rscript run/reproduce_sweeps.R
 ```
 
 The sweep and misspecification scripts can be computationally expensive. They
@@ -132,20 +133,8 @@ loaded.
 
 Animation frames:
 
-```powershell
-& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\render_animations.R
+```sh
+Rscript run/render_animations.R
 ```
 
 Frames are written under `frames/`.
-
-## Notes for future edits
-
-- Add numerical changes in `src/solver.R`.
-- Add baseline static-plot changes in `src/plotting.R` or animation changes in
-  `src/animations/`.
-- Add sweep and misspecification changes in `src/experiments/`.
-- Add app-specific UI/wrapper changes in `app/` and `src/app/`.
-- Add new experiments as opt-in scripts under `run/`.
-- Keep generated files out of source modules. Loading `src/load.R` should
-  define functions only.
-- The original files are preserved in `legacy/` for comparison and rollback.
