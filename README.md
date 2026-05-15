@@ -16,6 +16,7 @@ src/
   solver.R        Numerical solver, diagnostics, and barrier equations.
   simulation.R    Reflected jump-diffusion simulation and pathwise costs.
   plotting.R      Static figures for the value derivative, paths, and controls.
+  app/            Helpers used by the Shiny companion app.
   experiments/
     sweeps.R                    Parameter sweeps and sweep plots.
     misspecification.R          Misspecification grids, cache, tables, runners.
@@ -26,6 +27,7 @@ src/
     control_canvas.R            Control/state/cost animation frames.
 
 run/
+  launch_app.R                 Launch the Shiny companion app.
   smoke.R                      Fast numerical check.
   example_basic.R              Minimal solve-and-print example.
   reproduce_figures.R          Rebuild the main static figures.
@@ -37,16 +39,18 @@ figures/       Existing generated figures and cached grids.
 frames/        Generated animation frames.
 docs/          Lightweight function references and notes.
 legacy/        Backup copy of the original monolithic scripts.
+app/           Shiny companion app.
 ```
 
 ## Requirements
 
-The code uses base R plus `nleqslv` for nonlinear systems.
+The core scripts use base R plus `nleqslv` for nonlinear systems. The optional
+companion app also uses `shiny` and `bslib`.
 
 Install missing packages with:
 
 ```r
-install.packages("nleqslv")
+install.packages(c("nleqslv", "shiny", "bslib"))
 ```
 
 ## Quick start
@@ -80,6 +84,19 @@ sol$gamma
 The smoke check currently verifies the baseline solution
 `xL = -0.9900086`, `xk = -0.2214323`, `xl = 0.5642733`,
 `xU = 0.7511408`, and `gamma = 2.48011711465`.
+
+## Shiny companion app
+
+Launch the interactive app from the repository root with:
+
+```powershell
+& "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run\launch_app.R
+```
+
+The app lets users choose model parameters, solve the free-boundary problem,
+inspect the optimal barriers and ambiguity thresholds, simulate reflected
+paths, and run modest comparative statics. See
+[`docs/shiny-app.md`](docs/shiny-app.md) for details.
 
 For compact guides to the main APIs, see
 [`docs/solver-reference.md`](docs/solver-reference.md),
@@ -127,6 +144,7 @@ Frames are written under `frames/`.
 - Add baseline static-plot changes in `src/plotting.R` or animation changes in
   `src/animations/`.
 - Add sweep and misspecification changes in `src/experiments/`.
+- Add app-specific UI/wrapper changes in `app/` and `src/app/`.
 - Add new experiments as opt-in scripts under `run/`.
 - Keep generated files out of source modules. Loading `src/load.R` should
   define functions only.
